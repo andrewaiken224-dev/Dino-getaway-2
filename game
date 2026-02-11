@@ -1,1 +1,1892 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>War Tracker + Map Builder (Offline) v7.1 FULL (Drag Fixed)</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121a24; --panel2:#0f1620; --text:#e8eef7;
+    --muted:#9fb0c7; --line:#223246; --accent:#7aa7ff;
 
+    --friendly:#2b78ff; --hostile:#ff3b3b; --neutral:#2ecc71; --unknown:#ffd24a;
+
+    --sea:#1c4f9a; --land:#2f7a4a; --forest:#1f5a3a; --mount:#7a6a57;
+    --urban:#6f7a86; --desert:#9b8a52; --ice:#bfe9ff;
+
+    --road:#e6e6e6; --river:#4aa0ff; --border:#ffcc66;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; overflow:hidden;
+    background:linear-gradient(180deg,#070a0f,#0b0f14);
+    color:var(--text);
+    font:14px/1.25 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  }
+  .app{display:grid; grid-template-columns: 500px 1fr; height:100vh; width:100vw;}
+
+  .sidebar{
+    background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border-right:1px solid var(--line);
+    padding:14px; overflow:auto;
+  }
+  .topbar{display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:12px;}
+  .title{font-weight:900; letter-spacing:.3px; font-size:14px;}
+  .title small{color:var(--muted);font-weight:800}
+  .btn{
+    background:#162235; border:1px solid #2a3d59; color:var(--text);
+    padding:9px 11px; border-radius:12px; cursor:pointer;
+    display:inline-flex; gap:8px; align-items:center; user-select:none; white-space:nowrap;
+    font-weight:800;
+  }
+  .btn:hover{border-color:#3e5f8a}
+  .btn:active{transform:translateY(1px)}
+  .btn.secondary{background:#101b2a}
+  .btn.danger{background:#2a1212;border-color:#5a2a2a}
+  .btn.good{background:#132a18;border-color:#2a5a39}
+  .row{display:flex; gap:10px; flex-wrap:wrap}
+  .row.nowrap{flex-wrap:nowrap}
+  .row > *{flex:1}
+  .card{
+    border:1px solid var(--line);
+    background:rgba(255,255,255,.03);
+    border-radius:16px; padding:12px; margin:10px 0;
+  }
+  .card h3{
+    margin:0 0 10px 0; font-size:12px; letter-spacing:.6px;
+    color:var(--muted); text-transform:uppercase;
+  }
+  label{display:block; font-size:12px; color:var(--muted); margin:10px 0 6px;}
+  input[type="text"], input[type="number"], select, textarea{
+    width:100%; background:#0b1320; border:1px solid #223246;
+    color:var(--text); padding:10px 10px; border-radius:12px; outline:none;
+  }
+  input:focus, select:focus, textarea:focus{
+    border-color:#3e5f8a; box-shadow:0 0 0 3px rgba(122,167,255,.12);
+  }
+  .bigSelect{
+    font-size:15px; padding:13px 12px; border-radius:14px;
+    font-weight:850;
+  }
+  .hint{color:var(--muted); font-size:12px; margin-top:8px;}
+  .sep{height:1px;background:var(--line);margin:10px 0}
+  .pillbar{display:flex; gap:8px; flex-wrap:wrap}
+  .pill{
+    border:1px solid #2a3d59; background:#101b2a;
+    border-radius:999px; padding:8px 11px; cursor:pointer;
+    user-select:none; font-size:12px; font-weight:900;
+  }
+  .pill:hover{border-color:#3e5f8a}
+
+  .main{position:relative; overflow:hidden; background:#05070b;}
+  .canvasWrap{position:absolute; inset:0; display:grid; grid-template-rows: 52px 1fr 50px;}
+
+  .mapTop, .mapBottom{
+    display:flex; align-items:center; gap:10px; padding:10px 12px;
+    background:rgba(8,11,16,.75); backdrop-filter: blur(8px);
+  }
+  .mapTop{border-bottom:1px solid var(--line)}
+  .mapBottom{border-top:1px solid var(--line)}
+  .badge{
+    padding:6px 10px; border:1px solid #2a3d59; border-radius:999px;
+    font-size:12px; color:var(--muted); background:rgba(16,27,42,.6);
+  }
+  .spacer{flex:1}
+  .miniBtn{
+    padding:7px 10px; border-radius:12px; border:1px solid #2a3d59;
+    background:rgba(16,27,42,.55); color:var(--text); cursor:pointer;
+    font-weight:900;
+  }
+  .miniBtn:hover{border-color:#3e5f8a}
+  .mapArea{position:relative; overflow:auto;
+    background:radial-gradient(circle at 30% 30%, rgba(122,167,255,.08), transparent 45%),
+               radial-gradient(circle at 70% 70%, rgba(255,59,59,.06), transparent 45%);
+  }
+  .stage{
+    position:relative; width:1600px; height:900px; margin:40px;
+    border:1px dashed rgba(255,255,255,.16); border-radius:18px;
+    background:#0a0e14; box-shadow:0 20px 70px rgba(0,0,0,.55);
+    transform-origin:0 0;
+    touch-action:none;
+  }
+
+  .mapImg{position:absolute; inset:0; z-index:1; pointer-events:none; width:100%; height:100%; object-fit:contain; border-radius:18px; background:#0a0e14;}
+  .tileCanvas{position:absolute; inset:0; z-index:2; border-radius:18px; pointer-events:none;}
+  .infraSvg{position:absolute; inset:0; z-index:3; width:100%; height:100%; pointer-events:none;}
+  .overlaySvg{position:absolute; inset:0; z-index:4; width:100%; height:100%; pointer-events:none;}
+  .unitsLayer{position:absolute; inset:0; z-index:5;}
+  .interaction{
+    position:absolute; inset:0; z-index:6;
+    pointer-events:none;
+    background:transparent;
+    touch-action:none;
+  }
+
+  .unit{
+    position:absolute; width:170px; height:102px;
+    transform-origin:center center; pointer-events:auto; cursor:grab; user-select:none;
+    -webkit-user-select:none;
+    touch-action:none;
+    filter: drop-shadow(0 6px 14px rgba(0,0,0,.35));
+    transition: left 120ms ease, top 120ms ease, width 120ms ease, height 120ms ease, transform 120ms ease;
+  }
+  .unit:active{cursor:grabbing}
+  .unit.dragging{transition:none !important}
+  .unit.selected{outline:2px solid rgba(122,167,255,.8); outline-offset:4px; border-radius:12px;}
+  .handles{position:absolute; inset:-10px; pointer-events:none;}
+  .handle{
+    position:absolute; width:12px;height:12px;border-radius:4px;
+    background:rgba(122,167,255,.95); border:1px solid rgba(0,0,0,.55);
+    pointer-events:auto; cursor:nwse-resize;
+  }
+  .handle.br{right:0;bottom:0}
+  .handle.tr{right:0;top:0;cursor:nesw-resize}
+  .handle.bl{left:0;bottom:0;cursor:nesw-resize}
+  .handle.tl{left:0;top:0;cursor:nwse-resize}
+  .rotHandle{
+    position:absolute; left:50%; top:-22px; transform:translateX(-50%);
+    width:14px;height:14px;border-radius:999px;
+    background:rgba(255,210,74,.95); border:1px solid rgba(0,0,0,.55);
+    pointer-events:auto; cursor:grab;
+  }
+  .unitMeta{
+    position:absolute; left:10px; right:10px; bottom:6px;
+    display:flex; justify-content:space-between; gap:8px;
+    font-size:11px; color:#0b0f14; font-weight:950; pointer-events:none;
+  }
+  .unitMeta .id, .unitMeta .echelon{
+    padding:3px 6px; border-radius:9px; background:rgba(255,255,255,.88); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;
+  }
+  .unitMeta .id{max-width:70%}
+
+  @keyframes pulse {
+    0% { transform: scale(1); filter: drop-shadow(0 6px 14px rgba(0,0,0,.35)); }
+    50% { transform: scale(1.03); filter: drop-shadow(0 10px 22px rgba(122,167,255,.45)); }
+    100% { transform: scale(1); filter: drop-shadow(0 6px 14px rgba(0,0,0,.35)); }
+  }
+  .pulseOnce{ animation:pulse 520ms ease-in-out 1; }
+
+  .turnSlider{width:320px}
+  .layerToggles{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+  .toggle{
+    display:flex; gap:8px; align-items:center; padding:6px 10px;
+    border:1px solid #2a3d59; border-radius:999px;
+    background:rgba(16,27,42,.45); cursor:pointer; user-select:none;
+    color:var(--muted); font-size:12px; font-weight:900;
+  }
+  .toggle input{accent-color:var(--accent)}
+
+  .toast{
+    position:fixed; right:16px; bottom:16px; z-index:9999;
+    background:rgba(18,26,36,.92); border:1px solid #2a3d59; color:var(--text);
+    padding:10px 12px; border-radius:12px; max-width:520px; display:none;
+    font-weight:900;
+  }
+  .kbd{
+    font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:11px; padding:2px 6px; border-radius:8px;
+    border:1px solid #2a3d59; background:#0b1320; color:var(--muted);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="topbar">
+      <div class="title">War Tracker <small>• Map Builder + SITMAP v7.1 (FULL)</small></div>
+      <button class="btn secondary" id="btnHelp">Help</button>
+    </div>
+
+    <div class="card">
+      <h3>Workflow</h3>
+      <div class="row">
+        <button class="btn good" id="modeMapBuild">🧱 Build Map</button>
+        <button class="btn" id="modeWarPlan">🗺️ War Plan</button>
+      </div>
+      <div class="hint">
+        Fixes: drag/resize/rotate stable + SVG click safe.<br/>
+        <span class="kbd">Esc</span> cancel • <span class="kbd">Del</span> delete selected • <span class="kbd">R</span> rotate POI/Stamp/Label
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Base Map (Optional)</h3>
+      <div class="row nowrap">
+        <input type="file" id="mapFile" accept="image/png,image/jpeg,image/webp" />
+        <button class="btn" id="btnClearMap">Clear</button>
+      </div>
+      <label>Stage size</label>
+      <div class="row">
+        <input type="number" id="stageW" min="400" step="50" value="1600" />
+        <input type="number" id="stageH" min="300" step="50" value="900" />
+      </div>
+      <div class="row">
+        <button class="btn" id="btnResizeStage">Apply</button>
+        <button class="btn secondary" id="btnFitStage">Fit View</button>
+      </div>
+    </div>
+
+    <div class="card" id="mapBuildCard">
+      <h3>Map Builder</h3>
+
+      <label>Tool</label>
+      <div class="row">
+        <button class="btn" id="toolPaint">🖌 Paint Terrain</button>
+        <button class="btn" id="toolErase">🧽 Erase</button>
+      </div>
+
+      <div class="row">
+        <button class="btn" id="toolPoly">🧩 Polygon Island</button>
+        <button class="btn" id="toolLabel">🏷 Label</button>
+        <button class="btn secondary" id="toolSelectBuild">🖱 Select</button>
+      </div>
+
+      <div class="row">
+        <button class="btn" id="toolRoad">🛣 Road</button>
+        <button class="btn" id="toolRiver">🌊 River</button>
+        <button class="btn" id="toolBorder">🟧 Border</button>
+      </div>
+
+      <div class="row">
+        <button class="btn" id="toolCity">🏙 City/POI</button>
+        <button class="btn" id="toolStamp">📌 Stamp</button>
+      </div>
+
+      <div class="row">
+        <button class="btn secondary" id="btnFinishBuild">Finish</button>
+        <button class="btn secondary" id="btnCancelBuild">Cancel</button>
+      </div>
+
+      <label>Grid + Brush</label>
+      <div class="row">
+        <select id="gridSize">
+          <option value="10">10px (high detail)</option>
+          <option value="20" selected>20px (recommended)</option>
+          <option value="30">30px (fast)</option>
+          <option value="40">40px (very fast)</option>
+        </select>
+        <select id="brushSize">
+          <option value="1">Brush 1</option>
+          <option value="2" selected>Brush 2</option>
+          <option value="3">Brush 3</option>
+          <option value="4">Brush 4</option>
+        </select>
+      </div>
+
+      <label>Terrain type</label>
+      <select id="terrainType" class="bigSelect">
+        <option value="sea">Sea</option>
+        <option value="land">Land</option>
+        <option value="forest">Forest</option>
+        <option value="mountain">Mountain</option>
+        <option value="urban">Urban</option>
+        <option value="desert">Desert</option>
+        <option value="ice">Ice</option>
+      </select>
+
+      <div class="row">
+        <button class="btn secondary" id="btnClearTerrain">Clear Terrain</button>
+        <button class="btn secondary" id="btnSmoothCoast">🌀 Smooth Coast</button>
+      </div>
+
+      <div class="sep"></div>
+
+      <h3 style="margin-top:0">Snap + Lines</h3>
+      <label class="toggle" style="margin:0;display:inline-flex">
+        <input type="checkbox" id="togSnapPOI" checked /> Snap lines to cities/ports/POIs
+      </label>
+      <label>Line width</label>
+      <select id="infraWidth" class="bigSelect">
+        <option value="4">Thin</option>
+        <option value="7" selected>Medium</option>
+        <option value="10">Thick</option>
+      </select>
+
+      <div class="sep"></div>
+
+      <h3 style="margin-top:0">POI / City Settings</h3>
+      <div class="row">
+        <select id="poiType" class="bigSelect">
+          <option value="city">City</option>
+          <option value="port">Port</option>
+          <option value="airfield">Airfield</option>
+          <option value="base">Base</option>
+        </select>
+        <input type="text" id="poiLabel" placeholder="Name (optional)" />
+      </div>
+
+      <div class="sep"></div>
+
+      <h3 style="margin-top:0">Label Settings</h3>
+      <div class="row">
+        <input type="text" id="labelText" placeholder="Label text (ex: North Sea / Capital City)" />
+        <select id="labelSize" class="bigSelect">
+          <option value="16">Small</option>
+          <option value="20" selected>Medium</option>
+          <option value="26">Large</option>
+          <option value="34">XL</option>
+        </select>
+      </div>
+
+      <div class="sep"></div>
+
+      <h3 style="margin-top:0">Stamp Settings</h3>
+      <div class="row">
+        <select id="stampType" class="bigSelect">
+          <option value="bridge">Bridge</option>
+          <option value="runway">Airfield Runway</option>
+          <option value="anchor">Port Anchor</option>
+          <option value="refinery">Refinery</option>
+          <option value="radar">Radar Site</option>
+          <option value="power">Power Plant</option>
+          <option value="factory">Factory</option>
+          <option value="ammo">Ammo Depot</option>
+          <option value="hospital">Hospital</option>
+          <option value="rail">Rail Hub</option>
+        </select>
+        <select id="stampSize" class="bigSelect">
+          <option value="0.8">Small</option>
+          <option value="1.0" selected>Medium</option>
+          <option value="1.3">Large</option>
+          <option value="1.7">XL</option>
+        </select>
+      </div>
+      <input type="text" id="stampLabel" placeholder="Label (optional)" />
+      <div class="hint">Select tool lets you drag POIs, stamps, and labels. Press <span class="kbd">R</span> to rotate selection.</div>
+    </div>
+
+    <div class="card" id="warPlanCard" style="display:none">
+      <h3>War Planning (Units)</h3>
+
+      <label>Selection tool</label>
+      <div class="row">
+        <button class="btn secondary" id="toolSelectPlan">🖱 Select</button>
+        <button class="btn" id="toolFront">➰ Front / LOA</button>
+        <button class="btn" id="toolZone">⬛ Zone / AO</button>
+        <button class="btn" id="toolNote">📝 Note</button>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="btnFinishPlan">Finish</button>
+        <button class="btn secondary" id="btnCancelPlan">Cancel</button>
+      </div>
+
+      <label>Affiliation + domain</label>
+      <div class="row">
+        <select id="affil" class="bigSelect">
+          <option value="friendly">Friendly (Blue)</option>
+          <option value="hostile">Hostile (Red)</option>
+          <option value="neutral">Neutral (Green)</option>
+          <option value="unknown">Unknown (Yellow)</option>
+        </select>
+        <select id="domain" class="bigSelect">
+          <option value="land">Land</option>
+          <option value="naval">Naval</option>
+          <option value="air">Air</option>
+          <option value="space">Space</option>
+        </select>
+      </div>
+
+      <label>Unit type</label>
+      <input type="text" id="unitSearch" placeholder="Search: infantry, tank, carrier, sam..." />
+      <select id="unitType" class="bigSelect"></select>
+
+      <label>Echelon / Prefix</label>
+      <div class="row">
+        <select id="echelon" class="bigSelect">
+          <option value="TM">TM</option><option value="SQ">SQ</option><option value="PLT">PLT</option>
+          <option value="CO">CO</option><option value="BN">BN</option><option value="BDE">BDE</option>
+          <option value="DIV" selected>DIV</option><option value="CORPS">CORPS</option><option value="ARMY">ARMY</option>
+          <option value="FLEET">FLEET</option>
+          <option value="CSG">CSG</option>
+        </select>
+        <select id="prefix" class="bigSelect">
+          <option value="UCF">UCF</option>
+          <option value="ALLY">ALLY</option>
+          <option value="OPFOR">OPFOR</option>
+          <option value="NEUT">NEUT</option>
+        </select>
+      </div>
+
+      <label>Unit label (optional)</label>
+      <input type="text" id="unitLabel" placeholder="ex: 1st Infantry Division / 2nd Tank Bn" />
+
+      <div class="row">
+        <button class="btn good" id="btnAddUnit">➕ Add Unit</button>
+        <button class="btn danger" id="btnDeleteSelected">🗑 Delete Selected</button>
+      </div>
+
+      <div class="sep"></div>
+
+      <h3 style="margin-top:0">Draw settings</h3>
+      <div class="row">
+        <select id="drawAffil" class="bigSelect">
+          <option value="friendly">Friendly (Blue)</option>
+          <option value="hostile">Hostile (Red)</option>
+          <option value="neutral">Neutral (Green)</option>
+          <option value="unknown">Unknown (Yellow)</option>
+        </select>
+        <select id="drawKind" class="bigSelect">
+          <option value="front">Front Line</option>
+          <option value="ao">AO Territory (ownable)</option>
+          <option value="obj">Objective Area</option>
+          <option value="noGo">No-Go / Denied</option>
+        </select>
+      </div>
+      <label class="toggle" style="margin:0;display:inline-flex"><input type="checkbox" id="togCapture" checked /> Auto Capture (AO)</label>
+
+      <div class="sep"></div>
+      <h3 style="margin-top:0">Quick Unit Buttons</h3>
+      <div class="pillbar" id="quickBar"></div>
+
+      <div class="sep"></div>
+      <h3 style="margin-top:0">Custom Unit Type</h3>
+      <input type="text" id="customName" placeholder="New unit type name" />
+      <div class="row">
+        <select id="customIcon" class="bigSelect">
+          <option value="inf">Infantry</option>
+          <option value="mech">Mechanized</option>
+          <option value="armor">Armor</option>
+          <option value="arty">Artillery</option>
+          <option value="recon">Recon</option>
+          <option value="sam">Air Defense</option>
+          <option value="engineer">Engineer</option>
+          <option value="log">Logistics</option>
+          <option value="hq">HQ</option>
+          <option value="air">Air</option>
+          <option value="naval">Naval</option>
+          <option value="sub">Sub</option>
+          <option value="missile">Missile</option>
+          <option value="cyber">Cyber/EW</option>
+        </select>
+      </div>
+      <label class="toggle" style="margin:0;display:inline-flex"><input type="checkbox" id="customQuick" /> Show in Quick Bar</label>
+      <div class="row">
+        <button class="btn" id="btnAddCustomType">➕ Add Custom Type</button>
+        <button class="btn secondary" id="btnResetTypes">Reset Defaults</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Scenario Save / Load</h3>
+      <div class="row">
+        <button class="btn" id="btnExport">Export JSON</button>
+        <button class="btn" id="btnImport">Import JSON</button>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="btnExportPng">Export PNG</button>
+        <button class="btn secondary" id="btnNewBlank">New Blank</button>
+      </div>
+      <textarea id="ioBox" rows="7" placeholder="Export shows here. Paste JSON here to import."></textarea>
+      <div class="hint">Export PNG captures: PNG + terrain + infra + stamps + labels + units + overlays.</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="canvasWrap">
+      <div class="mapTop">
+        <span class="badge" id="modeBadge">Mode: Build Map</span>
+        <span class="badge" id="toolBadge">Tool: Paint</span>
+        <span class="badge" id="selectedBadge">Selected: none</span>
+        <span class="spacer"></span>
+        <button class="miniBtn" id="zoomOut">−</button>
+        <button class="miniBtn" id="zoomIn">+</button>
+        <button class="miniBtn" id="zoomReset">Reset</button>
+        <span class="badge">Zoom: <span id="zoomPct">100%</span></span>
+      </div>
+
+      <div class="mapArea" id="mapArea">
+        <div class="stage" id="stage">
+          <img class="mapImg" id="mapImg" alt="Map" />
+          <canvas class="tileCanvas" id="tileCanvas"></canvas>
+          <svg class="infraSvg" id="infraSvg" viewBox="0 0 1600 900" preserveAspectRatio="none"></svg>
+          <svg class="overlaySvg" id="overlaySvg" viewBox="0 0 1600 900" preserveAspectRatio="none"></svg>
+          <div class="unitsLayer" id="unitsLayer"></div>
+          <div class="interaction" id="interaction" title="Interaction layer"></div>
+        </div>
+      </div>
+
+      <div class="mapBottom">
+        <div class="badge">Turn: <b id="turnLabel">0</b></div>
+        <input class="turnSlider" id="turnSlider" type="range" min="0" max="0" value="0" />
+        <button class="miniBtn" id="btnSnap">💾 Snapshot</button>
+        <button class="miniBtn" id="btnNewTurn">➕ Turn</button>
+
+        <span class="spacer"></span>
+
+        <div class="layerToggles">
+          <label class="toggle"><input type="checkbox" id="togMapImg" checked /> PNG</label>
+          <label class="toggle"><input type="checkbox" id="togTerrain" checked /> Terrain</label>
+          <label class="toggle"><input type="checkbox" id="togInfra" checked /> Infra/Stamps/Labels</label>
+          <label class="toggle"><input type="checkbox" id="togUnits" checked /> Units</label>
+          <label class="toggle"><input type="checkbox" id="togOverlays" checked /> Overlays</label>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= Utils ================= */
+const $ = (id)=>document.getElementById(id);
+const clamp=(min,max,v)=>Math.max(min,Math.min(max,v));
+function toast(msg){
+  const t=$("toast"); t.textContent=msg; t.style.display="block";
+  clearTimeout(toast._tm); toast._tm=setTimeout(()=>t.style.display="none",2600);
+}
+function cryptoRand(){
+  const a=new Uint32Array(2); crypto.getRandomValues(a);
+  return (a[0].toString(16)+a[1].toString(16)).slice(0,10);
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));}
+function getCss(varName){ return getComputedStyle(document.documentElement).getPropertyValue(varName).trim(); }
+function affilColor(affil){
+  const map={friendly:"--friendly",hostile:"--hostile",neutral:"--neutral",unknown:"--unknown"};
+  return getCss(map[affil]||"--friendly") || "#7aa7ff";
+}
+function terrainColor(type){
+  const map={sea:"--sea",land:"--land",forest:"--forest",mountain:"--mount",urban:"--urban",desert:"--desert",ice:"--ice"};
+  return getCss(map[type]||"--land");
+}
+function stagePointFromClient(ev){
+  const stage=$("stage");
+  const rect=stage.getBoundingClientRect();
+  return { x:(ev.clientX-rect.left)/state.stage.zoom, y:(ev.clientY-rect.top)/state.stage.zoom };
+}
+function dist2(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; }
+function pointInPolygon(pt, poly){
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const xi=poly[i].x, yi=poly[i].y;
+    const xj=poly[j].x, yj=poly[j].y;
+    const intersect=((yi>pt.y)!==(yj>pt.y)) &&
+      (pt.x < (xj-xi)*(pt.y-yi)/((yj-yi)||1e-9) + xi);
+    if(intersect) inside=!inside;
+  }
+  return inside;
+}
+
+const stageEl=$("stage");
+const mapArea=$("mapArea");
+const mapImgEl=$("mapImg");
+const tileCanvas=$("tileCanvas");
+const ctx=tileCanvas.getContext("2d");
+const infraSvg=$("infraSvg");
+const overlaySvg=$("overlaySvg");
+const unitsLayer=$("unitsLayer");
+const interaction=$("interaction");
+
+const state={
+  stage:{w:1600,h:900,zoom:1},
+  mapDataUrl:"",
+  appMode:"build",
+  tool:"paint",
+  paint:{grid:20, brush:2, type:"sea", down:false},
+  temp:{points:[], kind:null},
+  infraShapes:[],
+  shapes:[],
+  units:[],
+  snapshots:[],
+  turn:0,
+  selected:{kind:null,id:null},
+  dragging:null,
+  idCounters:{},
+  templates:{},
+};
+let terrain={};
+
+function updateInteractionPointerEvents(){
+  const needsClicks =
+    (state.appMode==="build" && state.tool!=="selectBuild") ||
+    (state.appMode==="plan"  && state.tool!=="selectPlan");
+  interaction.style.pointerEvents = needsClicks ? "all" : "none";
+}
+
+const DEFAULT_TEMPLATES = {
+  "inf_bn":{name:"INF BN",icon:"inf",quick:true},
+  "inf_bde":{name:"INF BDE",icon:"inf",quick:true},
+  "inf_div":{name:"INF DIV",icon:"inf",quick:true},
+  "mech_bn":{name:"MECH BN",icon:"mech",quick:true},
+  "armor_bn":{name:"TANK BN",icon:"armor",quick:true},
+  "recon_co":{name:"RECON CO",icon:"recon",quick:true},
+  "arty_bn":{name:"ARTY BN",icon:"arty",quick:true},
+  "mlrs_bn":{name:"MLRS BN",icon:"missile",quick:true},
+  "sam_bn":{name:"SAM BN",icon:"sam",quick:true},
+  "hq":{name:"HQ / CMD",icon:"hq",quick:true},
+  "fighter_sq":{name:"FTR SQ",icon:"air",quick:true},
+  "strike_sq":{name:"STRIKE SQ",icon:"air",quick:true},
+  "carrier":{name:"CARRIER",icon:"naval",quick:true},
+  "csg":{name:"CSG",icon:"naval",quick:true},
+  "destroyer":{name:"DESTROYER",icon:"naval",quick:true},
+  "sub":{name:"SUB",icon:"sub",quick:true},
+  "engineer_bn":{name:"ENG BN",icon:"engineer",quick:false},
+  "log_bn":{name:"LOG BN",icon:"log",quick:false},
+  "ew_det":{name:"EW DET",icon:"cyber",quick:false},
+  "uav_swarm":{name:"UAV SWARM",icon:"cyber",quick:false},
+};
+function loadTemplates(defaultOnly=false){
+  if(defaultOnly || !Object.keys(state.templates).length){
+    state.templates=JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+  }
+  rebuildUnitTypeDropdown("");
+  rebuildQuickBar();
+}
+function rebuildUnitTypeDropdown(filter=""){
+  const sel=$("unitType"); sel.innerHTML="";
+  const f=filter.trim().toLowerCase();
+  const entries=Object.entries(state.templates)
+    .map(([k,v])=>({k,...v}))
+    .filter(it=>!f || it.name.toLowerCase().includes(f) || it.k.includes(f) || it.icon.includes(f))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+  for(const it of entries){
+    const o=document.createElement("option");
+    o.value=it.k; o.textContent=it.name;
+    sel.appendChild(o);
+  }
+}
+function rebuildQuickBar(){
+  const bar=$("quickBar"); bar.innerHTML="";
+  const quick=Object.entries(state.templates).filter(([,v])=>v.quick).map(([k,v])=>({k,...v})).sort((a,b)=>a.name.localeCompare(b.name));
+  for(const q of quick){
+    const pill=document.createElement("div");
+    pill.className="pill";
+    pill.textContent=q.name;
+    pill.onclick=()=>{ $("unitType").value=q.k; addUnit(); };
+    bar.appendChild(pill);
+  }
+}
+$("unitSearch").addEventListener("input",(e)=>rebuildUnitTypeDropdown(e.target.value));
+
+function setZoom(z){
+  state.stage.zoom=clamp(0.25,3,z);
+  stageEl.style.transform=`scale(${state.stage.zoom})`;
+  $("zoomPct").textContent=Math.round(state.stage.zoom*100)+"%";
+}
+$("zoomIn").onclick=()=>setZoom(state.stage.zoom*1.1);
+$("zoomOut").onclick=()=>setZoom(state.stage.zoom/1.1);
+$("zoomReset").onclick=()=>setZoom(1);
+
+function fitStage(){
+  const viewW=mapArea.clientWidth-80, viewH=mapArea.clientHeight-80;
+  const sx=viewW/state.stage.w, sy=viewH/state.stage.h;
+  setZoom(Math.min(sx,sy,1.6));
+  mapArea.scrollLeft=0; mapArea.scrollTop=0;
+}
+$("btnFitStage").onclick=fitStage;
+
+function applyStageSize(w,h){
+  state.stage.w=w; state.stage.h=h;
+  stageEl.style.width=w+"px";
+  stageEl.style.height=h+"px";
+  tileCanvas.width=w; tileCanvas.height=h;
+  infraSvg.setAttribute("viewBox",`0 0 ${w} ${h}`);
+  overlaySvg.setAttribute("viewBox",`0 0 ${w} ${h}`);
+  redrawTerrain();
+  renderInfra();
+  renderOverlays();
+  renderUnits();
+  fitStage();
+}
+$("btnResizeStage").onclick=()=>{
+  const w=parseInt($("stageW").value,10)||1600;
+  const h=parseInt($("stageH").value,10)||900;
+  applyStageSize(w,h);
+};
+
+function setAppMode(m){
+  state.appMode=m;
+  $("modeBadge").textContent = "Mode: " + (m==="build"?"Build Map":"War Plan");
+  $("mapBuildCard").style.display = m==="build"?"block":"none";
+  $("warPlanCard").style.display = m==="plan"?"block":"none";
+  if(m==="build") setTool("paint");
+  else setTool("selectPlan");
+  updateInteractionPointerEvents();
+}
+$("modeMapBuild").onclick=()=>setAppMode("build");
+$("modeWarPlan").onclick=()=>setAppMode("plan");
+
+function setTool(t){
+  state.tool=t;
+  $("toolBadge").textContent="Tool: " + toolLabel(t);
+  state.temp.points=[];
+  state.temp.kind=null;
+  updateInteractionPointerEvents();
+}
+function toolLabel(t){
+  const map={
+    paint:"Paint", erase:"Erase",
+    poly:"Polygon Island", label:"Label",
+    road:"Road", river:"River", border:"Border",
+    city:"City/POI", stamp:"Stamp",
+    selectBuild:"Select (Build)",
+    selectPlan:"Select",
+    front:"Front/LOA", zone:"Zone/AO", note:"Note"
+  };
+  return map[t]||t;
+}
+
+$("toolPaint").onclick=()=>setTool("paint");
+$("toolErase").onclick=()=>setTool("erase");
+$("toolPoly").onclick=()=>setTool("poly");
+$("toolLabel").onclick=()=>setTool("label");
+$("toolRoad").onclick=()=>setTool("road");
+$("toolRiver").onclick=()=>setTool("river");
+$("toolBorder").onclick=()=>setTool("border");
+$("toolCity").onclick=()=>setTool("city");
+$("toolStamp").onclick=()=>setTool("stamp");
+$("toolSelectBuild").onclick=()=>setTool("selectBuild");
+
+$("toolSelectPlan").onclick=()=>setTool("selectPlan");
+$("toolFront").onclick=()=>setTool("front");
+$("toolZone").onclick=()=>setTool("zone");
+$("toolNote").onclick=()=>setTool("note");
+
+function fileToDataURL(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result);
+    r.onerror=rej;
+    r.readAsDataURL(file);
+  });
+}
+$("mapFile").addEventListener("change", async (e)=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  state.mapDataUrl=await fileToDataURL(f);
+  mapImgEl.src=state.mapDataUrl;
+  toast("Map image loaded.");
+});
+$("btnClearMap").onclick=()=>{
+  state.mapDataUrl="";
+  mapImgEl.removeAttribute("src");
+  toast("Map image cleared.");
+};
+
+function gridKey(gx,gy){ return gx+"_"+gy; }
+$("gridSize").onchange=(e)=>{ state.paint.grid=parseInt(e.target.value,10); redrawTerrain(); };
+$("brushSize").onchange=(e)=>{ state.paint.brush=parseInt(e.target.value,10); };
+$("terrainType").onchange=(e)=>{ state.paint.type=e.target.value; };
+
+function redrawTerrain(){
+  ctx.clearRect(0,0,tileCanvas.width,tileCanvas.height);
+  const gs=state.paint.grid;
+  for(const [k,type] of Object.entries(terrain)){
+    const [gx,gy]=k.split("_").map(Number);
+    const x=gx*gs, y=gy*gs;
+    ctx.fillStyle=terrainColor(type);
+    ctx.globalAlpha=0.65;
+    ctx.fillRect(x,y,gs,gs);
+  }
+  ctx.globalAlpha=1;
+}
+function paintAt(x,y,type){
+  const gs=state.paint.grid, b=state.paint.brush;
+  const gx=Math.floor(x/gs), gy=Math.floor(y/gs);
+  for(let dy=-b+1;dy<=b-1;dy++){
+    for(let dx=-b+1;dx<=b-1;dx++){
+      const nx=gx+dx, ny=gy+dy;
+      if(nx<0||ny<0||nx*gs>=state.stage.w||ny*gs>=state.stage.h) continue;
+      const k=gridKey(nx,ny);
+      if(type===null) delete terrain[k];
+      else terrain[k]=type;
+    }
+  }
+  redrawTerrain();
+}
+$("btnClearTerrain").onclick=()=>{ terrain={}; redrawTerrain(); toast("Terrain cleared."); };
+
+function smoothCoast(passes=2){
+  const gs=state.paint.grid;
+  const maxX=Math.floor(state.stage.w/gs), maxY=Math.floor(state.stage.h/gs);
+  const isLand=(t)=>t && t!=="sea";
+  const isSea=(t)=>t==="sea";
+  const get=(x,y)=>terrain[gridKey(x,y)]||null;
+
+  for(let p=0;p<passes;p++){
+    const next={...terrain};
+    for(let y=0;y<maxY;y++){
+      for(let x=0;x<maxX;x++){
+        const k=gridKey(x,y);
+        const cur=get(x,y);
+        if(!cur) continue;
+
+        let landN=0, seaN=0;
+        for(let dy=-1;dy<=1;dy++){
+          for(let dx=-1;dx<=1;dx++){
+            if(dx===0 && dy===0) continue;
+            const n=get(x+dx,y+dy);
+            if(!n) continue;
+            if(isSea(n)) seaN++; else if(isLand(n)) landN++;
+          }
+        }
+        if(isSea(cur) && landN>=5) next[k]="land";
+        if(isLand(cur) && seaN>=6) next[k]="sea";
+      }
+    }
+    terrain=next;
+  }
+  redrawTerrain();
+  toast(`Coast smoothed (${passes} passes).`);
+}
+$("btnSmoothCoast").onclick=()=>smoothCoast(2);
+
+function fillPolygonToTerrain(poly, type){
+  const gs=state.paint.grid;
+  const minX=Math.max(0, Math.floor(Math.min(...poly.map(p=>p.x))/gs));
+  const maxX=Math.min(Math.floor(state.stage.w/gs)-1, Math.floor(Math.max(...poly.map(p=>p.x))/gs));
+  const minY=Math.max(0, Math.floor(Math.min(...poly.map(p=>p.y))/gs));
+  const maxY=Math.min(Math.floor(state.stage.h/gs)-1, Math.floor(Math.max(...poly.map(p=>p.y))/gs));
+
+  for(let gy=minY; gy<=maxY; gy++){
+    for(let gx=minX; gx<=maxX; gx++){
+      const cx=gx*gs + gs/2;
+      const cy=gy*gs + gs/2;
+      if(pointInPolygon({x:cx,y:cy}, poly)){
+        const k=gridKey(gx,gy);
+        if(type===null) delete terrain[k];
+        else terrain[k]=type;
+      }
+    }
+  }
+  redrawTerrain();
+}
+
+function renderInfra(){
+  infraSvg.replaceChildren();
+  for(const s of state.infraShapes){
+    if(s.kind==="line") infraSvg.appendChild(infraLineToSvg(s));
+    if(s.kind==="poi") infraSvg.appendChild(poiToSvg(s));
+    if(s.kind==="stamp") infraSvg.appendChild(stampToSvg(s));
+    if(s.kind==="label") infraSvg.appendChild(labelToSvg(s));
+  }
+  applyLayerToggles();
+}
+function infraLineToSvg(s){
+  const el=document.createElementNS("http://www.w3.org/2000/svg","polyline");
+  el.setAttribute("points", s.points.map(p=>`${p.x},${p.y}`).join(" "));
+  const stroke = s.lineType==="road"?getCss("--road") : s.lineType==="river"?getCss("--river") : getCss("--border");
+  el.setAttribute("fill","none");
+  el.setAttribute("stroke",stroke);
+  el.setAttribute("stroke-width", s.width||7);
+  el.setAttribute("stroke-linecap","round");
+  el.setAttribute("stroke-linejoin","round");
+  el.setAttribute("opacity","0.95");
+  if(s.lineType==="border") el.setAttribute("stroke-dasharray","16 10");
+  return el;
+}
+function poiToSvg(s){
+  const g=document.createElementNS("http://www.w3.org/2000/svg","g");
+  g.setAttribute("transform", `translate(${s.x} ${s.y}) rotate(${s.rot||0})`);
+  const colors={city:"#ffffff", port:"#4aa0ff", airfield:"#ffd24a", base:"#ff6b6b"};
+  const c=colors[s.poiType]||"#ffffff";
+
+  const ring=document.createElementNS("http://www.w3.org/2000/svg","circle");
+  ring.setAttribute("r","12");
+  ring.setAttribute("fill","none");
+  ring.setAttribute("stroke",c);
+  ring.setAttribute("stroke-width","2");
+  ring.setAttribute("opacity","0.55");
+
+  const circ=document.createElementNS("http://www.w3.org/2000/svg","circle");
+  circ.setAttribute("r","7");
+  circ.setAttribute("fill",c);
+  circ.setAttribute("opacity","0.95");
+
+  g.appendChild(ring); g.appendChild(circ);
+
+  if(s.label){
+    const t=document.createElementNS("http://www.w3.org/2000/svg","text");
+    t.setAttribute("x","16"); t.setAttribute("y","6");
+    t.setAttribute("fill",c);
+    t.setAttribute("font-size","16");
+    t.setAttribute("font-weight","900");
+    t.setAttribute("font-family","system-ui,Segoe UI,Arial");
+    t.textContent=s.label;
+    g.appendChild(t);
+  }
+  if(state.selected.kind==="poi" && state.selected.id===s.id){
+    const sel=document.createElementNS("http://www.w3.org/2000/svg","circle");
+    sel.setAttribute("r","18");
+    sel.setAttribute("fill","none");
+    sel.setAttribute("stroke","rgba(122,167,255,.9)");
+    sel.setAttribute("stroke-width","2");
+    g.appendChild(sel);
+  }
+  return g;
+}
+function stampToSvg(s){
+  const g=document.createElementNS("http://www.w3.org/2000/svg","g");
+  const scale=s.scale||1.0;
+  g.setAttribute("transform", `translate(${s.x} ${s.y}) rotate(${s.rot||0}) scale(${scale})`);
+  const color="#ffffff";
+
+  const icons = {
+    bridge:   `M-20 8 Q-10 -6 0 8 Q10 -6 20 8 M-22 8 L22 8 M-22 14 L22 14`,
+    runway:   `M-6 -22 L6 -22 L6 22 L-6 22 M-14 -12 L-6 -12 M6 -12 L14 -12 M-14 0 L-6 0 M6 0 L14 0 M-14 12 L-6 12 M6 12 L14 12`,
+    anchor:   `M0 -22 L0 8 M-10 -10 L10 -10 M-18 6 Q0 26 18 6 M-18 6 L-10 6 M18 6 L10 6`,
+    refinery: `M-18 20 L-18 -6 L-6 -6 L-6 20 Z M2 20 L2 -16 L14 -16 L14 20 Z M-18 -6 L-6 -16 L-6 -6`,
+    radar:    `M0 20 L0 6 M-16 10 Q0 -12 16 10 M-10 14 Q0 0 10 14 M-4 18 Q0 10 4 18`,
+    power:    `M-10 20 L6 -20 L2 -6 L14 -6 L-2 20`,
+    factory:  `M-20 20 L-20 -4 L-10 -12 L-10 -4 L0 -12 L0 -4 L10 -12 L10 -4 L20 -12 L20 20 Z`,
+    ammo:     `M-18 20 L-18 -6 L18 -6 L18 20 Z M-10 -6 L-10 -16 L10 -16 L10 -6`,
+    hospital: `M-20 6 L-6 6 L-6 -8 L6 -8 L6 6 L20 6 L20 18 L6 18 L6 32 L-6 32 L-6 18 L-20 18 Z`,
+    rail:     `M-18 -20 L18 -20 M-18 20 L18 20 M-10 -20 L-10 20 M10 -20 L10 20 M-18 -10 L18 -10 M-18 10 L18 10`,
+  };
+
+  const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+  path.setAttribute("d", icons[s.stampType] || icons.factory);
+  path.setAttribute("fill","none");
+  path.setAttribute("stroke", color);
+  path.setAttribute("stroke-width","3");
+  path.setAttribute("stroke-linecap","round");
+  path.setAttribute("stroke-linejoin","round");
+  g.appendChild(path);
+
+  if(state.selected.kind==="stamp" && state.selected.id===s.id){
+    const sel=document.createElementNS("http://www.w3.org/2000/svg","circle");
+    sel.setAttribute("r","26");
+    sel.setAttribute("fill","none");
+    sel.setAttribute("stroke","rgba(122,167,255,.9)");
+    sel.setAttribute("stroke-width","2");
+    g.appendChild(sel);
+  }
+
+  if(s.label){
+    const t=document.createElementNS("http://www.w3.org/2000/svg","text");
+    t.setAttribute("x", 18);
+    t.setAttribute("y", 6);
+    t.setAttribute("fill", "#ffffff");
+    t.setAttribute("font-size","16");
+    t.setAttribute("font-weight","900");
+    t.setAttribute("font-family","system-ui,Segoe UI,Arial");
+    t.textContent=s.label;
+    g.appendChild(t);
+  }
+  return g;
+}
+function labelToSvg(s){
+  const g=document.createElementNS("http://www.w3.org/2000/svg","g");
+  g.setAttribute("transform", `translate(${s.x} ${s.y}) rotate(${s.rot||0})`);
+
+  const tHalo=document.createElementNS("http://www.w3.org/2000/svg","text");
+  tHalo.setAttribute("x","0"); tHalo.setAttribute("y","0");
+  tHalo.setAttribute("fill","none");
+  tHalo.setAttribute("stroke","rgba(0,0,0,.70)");
+  tHalo.setAttribute("stroke-width","5");
+  tHalo.setAttribute("paint-order","stroke");
+  tHalo.setAttribute("font-size", String(s.size||20));
+  tHalo.setAttribute("font-weight","950");
+  tHalo.setAttribute("font-family","system-ui,Segoe UI,Arial");
+  tHalo.textContent=s.text||"LABEL";
+
+  const t=document.createElementNS("http://www.w3.org/2000/svg","text");
+  t.setAttribute("x","0"); t.setAttribute("y","0");
+  t.setAttribute("fill", "#ffffff");
+  t.setAttribute("font-size", String(s.size||20));
+  t.setAttribute("font-weight","950");
+  t.setAttribute("font-family","system-ui,Segoe UI,Arial");
+  t.textContent=s.text||"LABEL";
+
+  g.appendChild(tHalo); g.appendChild(t);
+
+  if(state.selected.kind==="label" && state.selected.id===s.id){
+    const sel=document.createElementNS("http://www.w3.org/2000/svg","circle");
+    sel.setAttribute("r","16");
+    sel.setAttribute("fill","none");
+    sel.setAttribute("stroke","rgba(122,167,255,.9)");
+    sel.setAttribute("stroke-width","2");
+    g.appendChild(sel);
+  }
+  return g;
+}
+
+function ensureOverlayDefs(){
+  let defs=overlaySvg.querySelector("defs");
+  if(!defs){
+    defs=document.createElementNS("http://www.w3.org/2000/svg","defs");
+    overlaySvg.appendChild(defs);
+  }
+  return defs;
+}
+function overlayToSvg(s){
+  const base=affilColor(s.affil);
+  if(s.kind==="front"){
+    const el=document.createElementNS("http://www.w3.org/2000/svg","polyline");
+    el.setAttribute("points", s.points.map(p=>`${p.x},${p.y}`).join(" "));
+    el.setAttribute("fill","none");
+    el.setAttribute("stroke",base);
+    el.setAttribute("stroke-width","6");
+    el.setAttribute("stroke-linecap","round");
+    el.setAttribute("stroke-linejoin","round");
+    el.setAttribute("opacity","0.95");
+    if(s.drawKind!=="front") el.setAttribute("stroke-dasharray","12 10");
+    return el;
+  }
+  if(s.kind==="zone"){
+    const el=document.createElementNS("http://www.w3.org/2000/svg","polygon");
+    el.setAttribute("points", s.points.map(p=>`${p.x},${p.y}`).join(" "));
+    const zoneColor = (s.drawKind==="ao" && s.owner) ? affilColor(s.owner) : base;
+
+    if(s.drawKind==="ao" && s.contested){
+      const defs=ensureOverlayDefs();
+      const pid=`pat_${s.id.replace(/[^a-zA-Z0-9_]/g,'_')}`;
+      if(!overlaySvg.querySelector("#"+pid)){
+        const pat=document.createElementNS("http://www.w3.org/2000/svg","pattern");
+        pat.setAttribute("id",pid);
+        pat.setAttribute("patternUnits","userSpaceOnUse");
+        pat.setAttribute("width","14"); pat.setAttribute("height","14");
+        pat.setAttribute("patternTransform","rotate(35)");
+        const bg=document.createElementNS("http://www.w3.org/2000/svg","rect");
+        bg.setAttribute("width","14"); bg.setAttribute("height","14");
+        bg.setAttribute("fill", zoneColor); bg.setAttribute("opacity","0.10");
+        const stripe=document.createElementNS("http://www.w3.org/2000/svg","rect");
+        stripe.setAttribute("x","0"); stripe.setAttribute("y","0");
+        stripe.setAttribute("width","6"); stripe.setAttribute("height","14");
+        stripe.setAttribute("fill", zoneColor); stripe.setAttribute("opacity","0.22");
+        pat.appendChild(bg); pat.appendChild(stripe); defs.appendChild(pat);
+      }
+      el.setAttribute("fill",`url(#${pid})`);
+      el.setAttribute("opacity","1");
+    }else{
+      el.setAttribute("fill",zoneColor);
+      el.setAttribute("opacity", s.drawKind==="noGo" ? "0.20" : "0.12");
+    }
+    el.setAttribute("stroke",zoneColor);
+    el.setAttribute("stroke-width","4");
+    return el;
+  }
+  const el=document.createElementNS("http://www.w3.org/2000/svg","text");
+  el.setAttribute("x", s.points[0].x);
+  el.setAttribute("y", s.points[0].y);
+  el.setAttribute("fill",base);
+  el.setAttribute("font-size","18");
+  el.setAttribute("font-weight","900");
+  el.setAttribute("font-family","system-ui,Segoe UI,Arial");
+  el.textContent=s.text || "NOTE";
+  return el;
+}
+function renderOverlays(){
+  overlaySvg.replaceChildren();
+  ensureOverlayDefs();
+  for(const s of state.shapes){
+    overlaySvg.appendChild(overlayToSvg(s));
+  }
+  applyLayerToggles();
+}
+
+function nextId(prefix,echelon){
+  const key=`${prefix}_${echelon}`;
+  state.idCounters[key]=(state.idCounters[key]||0)+1;
+  return `${prefix}-${state.idCounters[key]}${echelon}`;
+}
+$("btnAddUnit").onclick=()=>addUnit();
+
+function addUnit(){
+  if(state.appMode!=="plan"){ toast("Switch to War Plan mode to place units."); return; }
+  const typeKey=$("unitType").value;
+  const tpl=state.templates[typeKey]; if(!tpl) return;
+
+  const echelon=$("echelon").value;
+  const prefix=$("prefix").value;
+  const id=nextId(prefix,echelon);
+  const label=$("unitLabel").value.trim() || tpl.name;
+
+  state.units.push({
+    id, typeKey, label,
+    affil:$("affil").value,
+    domain:$("domain").value,
+    echelon,
+    x: 160 + Math.random()*180,
+    y: 140 + Math.random()*180,
+    w:170, h:102, rot:0
+  });
+  renderUnits();
+  recomputeAOTerritory();
+  toast("Unit added. Use Select to move.");
+}
+
+function buildFramePath(affil){
+  if(affil==="hostile") return `M100 10 L185 60 L100 110 L15 60 Z`;
+  if(affil==="unknown") return `M100 12 Q160 28 180 60 Q160 92 100 108 Q40 92 20 60 Q40 28 100 12 Z`;
+  if(affil==="neutral") return `M25 22 Q25 15 32 15 L168 15 Q175 15 175 22 L175 98 Q175 105 168 105 L32 105 Q25 105 25 98 Z`;
+  return `M25 32 Q25 22 35 22 L70 22 L80 12 L120 12 L130 22 L165 22 Q175 22 175 32 L175 95 Q175 105 165 105 L35 105 Q25 105 25 95 Z`;
+}
+function buildFunctionIconPath(icon, domain){
+  const icons={
+    inf:`M80 52 L120 52 M90 36 L100 52 L110 36`,
+    mech:`M78 52 L122 52 M82 52 L90 42 L110 42 L118 52 M92 42 L92 34 M108 42 L108 34`,
+    armor:`M78 52 L122 52 M88 52 L88 40 L112 40 L112 52 M98 40 L102 34`,
+    arty:`M78 52 L122 52 M86 52 L114 34 M110 34 L114 34 L114 38`,
+    recon:`M85 44 Q100 30 115 44 Q100 58 85 44 Z`,
+    sam:`M86 52 L114 52 M100 32 L100 52 M94 38 L100 32 L106 38`,
+    hq:`M82 50 L118 50 M90 34 L110 34 M90 34 L90 50 M110 34 L110 50`,
+    air:`M100 30 L100 56 M90 40 L110 40`,
+    naval:`M86 50 L114 50 M92 50 L100 32 L108 50`,
+    sub:`M84 50 L116 50 M88 50 Q100 36 112 50 M92 58 L108 58`,
+    missile:`M90 58 L110 38 M106 38 L112 38 L112 44`,
+    engineer:`M86 50 L114 50 M92 34 L108 34 M92 34 L92 50 M108 34 L108 50 M96 42 L104 42`,
+    log:`M86 54 L114 54 M90 54 L90 44 L110 44 L110 54 M92 44 L96 38 M108 44 L104 38`,
+    cyber:`M90 40 L110 40 M90 52 L110 52 M96 34 L104 34 M96 58 L104 58`,
+  };
+  let p=icons[icon]||icons.hq;
+  if(domain==="naval") p += ` M126 30 L140 30 M133 30 L133 42`;
+  if(domain==="air") p += ` M60 30 L70 40 L60 50`;
+  if(domain==="space") p += ` M140 44 L146 48 L140 52 L134 48 Z`;
+  return p;
+}
+function unitSvg(u){
+  const tpl=state.templates[u.typeKey]||{name:"UNIT",icon:"hq"};
+  const stroke=affilColor(u.affil);
+  const frame=buildFramePath(u.affil);
+  const icon=buildFunctionIconPath(tpl.icon, u.domain);
+  return `
+    <svg viewBox="0 0 200 120" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="200" height="120" fill="rgba(255,255,255,0.02)" rx="10" />
+      <path d="${frame}" fill="rgba(0,0,0,0.35)" stroke="${stroke}" stroke-width="4" />
+      <path d="${icon}" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="100" y="68" text-anchor="middle" font-family="system-ui,Segoe UI,Arial"
+            font-size="16" font-weight="950" fill="rgba(232,238,247,0.92)">${escapeHtml(tpl.name)}</text>
+      <text x="100" y="92" text-anchor="middle" font-family="system-ui,Segoe UI,Arial"
+            font-size="12" font-weight="850" fill="rgba(159,176,199,0.92)">${escapeHtml(u.label)}</text>
+    </svg>
+  `;
+}
+function renderUnits(){
+  unitsLayer.innerHTML="";
+  for(const u of state.units){
+    const el=document.createElement("div");
+    el.className="unit";
+    el.style.left=u.x+"px";
+    el.style.top=u.y+"px";
+    el.style.width=u.w+"px";
+    el.style.height=u.h+"px";
+    el.style.transform=`rotate(${u.rot}deg)`;
+    el.innerHTML = unitSvg(u);
+
+    const meta=document.createElement("div");
+    meta.className="unitMeta";
+    meta.innerHTML=`<div class="id">${escapeHtml(u.id)}</div><div class="echelon">${escapeHtml(u.echelon)}</div>`;
+    el.appendChild(meta);
+
+    const handles=document.createElement("div");
+    handles.className="handles";
+    handles.innerHTML=`<div class="rotHandle"></div>
+      <div class="handle tl"></div><div class="handle tr"></div>
+      <div class="handle bl"></div><div class="handle br"></div>`;
+    el.appendChild(handles);
+
+    if(state.selected.kind==="unit" && state.selected.id===u.id) el.classList.add("selected");
+
+    el.addEventListener("pointerdown",(ev)=>{
+      if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      select("unit", u.id);
+      startUnitDrag(ev, el, u);
+    });
+
+    handles.querySelectorAll(".handle").forEach(h=>{
+      h.addEventListener("pointerdown",(ev)=>{
+        if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
+        ev.stopPropagation();
+        ev.preventDefault();
+        select("unit", u.id);
+        startUnitResize(ev, el, u,
+          h.classList.contains("br")?"br":
+          h.classList.contains("tr")?"tr":
+          h.classList.contains("bl")?"bl":"tl"
+        );
+      });
+    });
+    handles.querySelector(".rotHandle").addEventListener("pointerdown",(ev)=>{
+      if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      select("unit", u.id);
+      startUnitRotate(ev, el, u);
+    });
+
+    el.addEventListener("dblclick",(ev)=>{
+      ev.stopPropagation();
+      const nl=prompt("Edit label:", u.label);
+      if(nl!==null){ u.label=nl.trim()||u.label; renderUnits(); recomputeAOTerritory(); }
+    });
+
+    unitsLayer.appendChild(el);
+  }
+  applyLayerToggles();
+}
+
+function startUnitDrag(ev, el, u){
+  el.classList.add("dragging");
+  const start=stagePointFromClient(ev);
+  const ox=u.x, oy=u.y;
+
+  el.setPointerCapture(ev.pointerId);
+
+  function move(e){
+    e.preventDefault();
+    const p=stagePointFromClient(e);
+    u.x=clamp(0,state.stage.w-u.w, ox+(p.x-start.x));
+    u.y=clamp(0,state.stage.h-u.h, oy+(p.y-start.y));
+    el.style.left=u.x+"px";
+    el.style.top=u.y+"px";
+  }
+  function up(e){
+    if(e) e.preventDefault();
+    el.classList.remove("dragging");
+    try{ el.releasePointerCapture(ev.pointerId); }catch{}
+    el.removeEventListener("pointermove",move);
+    el.removeEventListener("pointerup",up);
+    el.removeEventListener("pointercancel",up);
+    recomputeAOTerritory();
+    el.classList.add("pulseOnce"); setTimeout(()=>el.classList.remove("pulseOnce"),600);
+  }
+
+  el.addEventListener("pointermove",move);
+  el.addEventListener("pointerup",up);
+  el.addEventListener("pointercancel",up);
+}
+function startUnitResize(ev, el, u, corner){
+  el.classList.add("dragging");
+  const start=stagePointFromClient(ev);
+  const ox=u.x, oy=u.y, ow=u.w, oh=u.h;
+
+  el.setPointerCapture(ev.pointerId);
+
+  function move(e){
+    e.preventDefault();
+    const p=stagePointFromClient(e);
+    const dx=p.x-start.x, dy=p.y-start.y;
+    let nx=ox, ny=oy, nw=ow, nh=oh;
+
+    if(corner==="br"){nw=ow+dx; nh=oh+dy;}
+    if(corner==="tr"){nw=ow+dx; nh=oh-dy; ny=oy+dy;}
+    if(corner==="bl"){nw=ow-dx; nh=oh+dy; nx=ox+dx;}
+    if(corner==="tl"){nw=ow-dx; nh=oh-dy; nx=ox+dx; ny=oy+dy;}
+
+    nw=Math.max(110, Math.min(520, nw));
+    nh=Math.max(70,  Math.min(320, nh));
+    nx=clamp(0, state.stage.w-nw, nx);
+    ny=clamp(0, state.stage.h-nh, ny);
+
+    u.x=nx; u.y=ny; u.w=nw; u.h=nh;
+    el.style.left=u.x+"px"; el.style.top=u.y+"px";
+    el.style.width=u.w+"px"; el.style.height=u.h+"px";
+  }
+  function up(e){
+    if(e) e.preventDefault();
+    el.classList.remove("dragging");
+    try{ el.releasePointerCapture(ev.pointerId); }catch{}
+    el.removeEventListener("pointermove",move);
+    el.removeEventListener("pointerup",up);
+    el.removeEventListener("pointercancel",up);
+    recomputeAOTerritory();
+  }
+
+  el.addEventListener("pointermove",move);
+  el.addEventListener("pointerup",up);
+  el.addEventListener("pointercancel",up);
+}
+function startUnitRotate(ev, el, u){
+  el.classList.add("dragging");
+  const rect=el.getBoundingClientRect();
+  const center={x:rect.left+rect.width/2, y:rect.top+rect.height/2};
+
+  el.setPointerCapture(ev.pointerId);
+
+  function move(e){
+    e.preventDefault();
+    const ang=Math.atan2(e.clientY-center.y, e.clientX-center.x)*180/Math.PI;
+    u.rot=(ang+90);
+    el.style.transform=`rotate(${u.rot}deg)`;
+  }
+  function up(e){
+    if(e) e.preventDefault();
+    el.classList.remove("dragging");
+    try{ el.releasePointerCapture(ev.pointerId); }catch{}
+    el.removeEventListener("pointermove",move);
+    el.removeEventListener("pointerup",up);
+    el.removeEventListener("pointercancel",up);
+  }
+
+  el.addEventListener("pointermove",move);
+  el.addEventListener("pointerup",up);
+  el.addEventListener("pointercancel",up);
+}
+
+function select(kind,id){
+  state.selected={kind,id};
+  $("selectedBadge").textContent=`Selected: ${kind} ${id}`;
+  renderInfra();
+  renderUnits();
+}
+function clearSelection(){
+  state.selected={kind:null,id:null};
+  $("selectedBadge").textContent="Selected: none";
+  renderInfra();
+  renderUnits();
+}
+$("btnDeleteSelected").onclick=()=>{
+  if(!state.selected.kind) return;
+  const {kind,id}=state.selected;
+
+  if(kind==="unit"){
+    state.units=state.units.filter(u=>u.id!==id);
+    renderUnits(); recomputeAOTerritory();
+  }
+  if(kind==="poi" || kind==="stamp" || kind==="label"){
+    state.infraShapes=state.infraShapes.filter(s=>!(s.kind===kind && s.id===id));
+    renderInfra();
+  }
+  clearSelection();
+  toast("Deleted.");
+};
+
+window.addEventListener("keydown",(e)=>{
+  const tag=document.activeElement?.tagName?.toLowerCase();
+  if((e.key==="Delete"||e.key==="Backspace") && !["input","textarea","select"].includes(tag)){
+    $("btnDeleteSelected").click();
+  }
+  if(e.key==="Escape"){
+    state.temp.points=[]; state.temp.kind=null;
+    renderTempPreview();
+    toast("Cancelled.");
+  }
+  if(e.key.toLowerCase()==="r"){
+    const sel=state.selected;
+    if(sel.kind==="stamp" || sel.kind==="poi" || sel.kind==="label"){
+      const obj=state.infraShapes.find(s=>s.kind===sel.kind && s.id===sel.id);
+      if(obj){
+        obj.rot=((obj.rot||0)+15)%360;
+        renderInfra();
+      }
+    }
+  }
+});
+
+$("btnFinishBuild").onclick=()=>finishTemp();
+$("btnCancelBuild").onclick=()=>{ state.temp.points=[]; state.temp.kind=null; renderTempPreview(); toast("Cancelled."); };
+$("btnFinishPlan").onclick=()=>finishTemp();
+$("btnCancelPlan").onclick=()=>{ state.temp.points=[]; state.temp.kind=null; renderTempPreview(); toast("Cancelled."); };
+
+function finishTemp(){
+  const t=state.tool;
+
+  if(state.appMode==="build" && t==="poly"){
+    if(state.temp.points.length<3){ toast("Polygon needs 3+ points."); return; }
+    const type=$("terrainType").value;
+    fillPolygonToTerrain(state.temp.points, type);
+    state.temp.points=[]; state.temp.kind=null;
+    renderTempPreview();
+    toast(`Polygon filled as ${type}.`);
+    return;
+  }
+
+  if(state.appMode==="build" && ["road","river","border"].includes(t)){
+    if(state.temp.points.length<2){ toast("Need 2+ points."); return; }
+    state.infraShapes.push({
+      id:"L-"+cryptoRand(),
+      kind:"line",
+      lineType:t,
+      width:parseInt($("infraWidth").value,10)||7,
+      points:JSON.parse(JSON.stringify(state.temp.points))
+    });
+    state.temp.points=[]; state.temp.kind=null;
+    renderInfra();
+    toast("Line saved.");
+    return;
+  }
+
+  if(state.appMode==="plan" && t==="front"){
+    if(state.temp.points.length<2){ toast("Need 2+ points."); return; }
+    state.shapes.push({
+      id:"F-"+cryptoRand(),
+      kind:"front",
+      affil:$("drawAffil").value,
+      drawKind:$("drawKind").value,
+      points:JSON.parse(JSON.stringify(state.temp.points))
+    });
+    state.temp.points=[]; state.temp.kind=null;
+    renderOverlays();
+    toast("Front saved.");
+    return;
+  }
+  if(state.appMode==="plan" && t==="zone"){
+    if(state.temp.points.length<3){ toast("Need 3+ points."); return; }
+    const aff=$("drawAffil").value;
+    const dk=$("drawKind").value;
+    const z={
+      id:"Z-"+cryptoRand(),
+      kind:"zone",
+      affil:aff,
+      drawKind:dk,
+      points:JSON.parse(JSON.stringify(state.temp.points))
+    };
+    if(dk==="ao"){ z.owner=aff; z.contested=false; }
+    state.shapes.push(z);
+    state.temp.points=[]; state.temp.kind=null;
+    renderOverlays();
+    recomputeAOTerritory();
+    toast("Zone saved.");
+    return;
+  }
+
+  toast("Nothing to finish.");
+}
+
+function listPOIs(){ return state.infraShapes.filter(s=>s.kind==="poi"); }
+function snapToNearestPOI(p){
+  if(!$("togSnapPOI").checked) return p;
+  const pois=listPOIs();
+  let best=null, bestD=Infinity;
+  for(const poi of pois){
+    const d=dist2(p, {x:poi.x,y:poi.y});
+    if(d<bestD){ bestD=d; best=poi; }
+  }
+  const snapRadius=28;
+  if(best && bestD <= snapRadius*snapRadius){
+    return {x:best.x, y:best.y};
+  }
+  return p;
+}
+
+interaction.addEventListener("pointerdown",(ev)=>{
+  const raw=stagePointFromClient(ev);
+  const p = (state.appMode==="build" && ["road","river","border","poly"].includes(state.tool))
+    ? snapToNearestPOI(raw)
+    : raw;
+
+  if(state.appMode==="build" && state.tool==="selectBuild"){
+    const picked = pickInfraAt(p);
+    if(picked){
+      select(picked.kind, picked.id);
+      startInfraDrag(ev, picked);
+      return;
+    }
+    clearSelection();
+    return;
+  }
+
+  if(state.appMode==="plan" && state.tool==="selectPlan"){
+    clearSelection();
+    return;
+  }
+
+  if(state.appMode==="build" && (state.tool==="paint" || state.tool==="erase")){
+    state.paint.down=true;
+    const type = (state.tool==="erase") ? null : $("terrainType").value;
+    paintAt(p.x,p.y,type);
+    ev.preventDefault();
+    return;
+  }
+
+  if(state.appMode==="build" && state.tool==="city"){
+    const poiType=$("poiType").value;
+    const label=$("poiLabel").value.trim();
+    const obj={ id:"P-"+cryptoRand(), kind:"poi", poiType, label, x:p.x, y:p.y, rot:0 };
+    state.infraShapes.push(obj);
+    renderInfra();
+    toast("POI placed (Select to move).");
+    return;
+  }
+
+  if(state.appMode==="build" && state.tool==="stamp"){
+    const stampType=$("stampType").value;
+    const scale=parseFloat($("stampSize").value)||1.0;
+    const label=$("stampLabel").value.trim();
+    const obj={ id:"S-"+cryptoRand(), kind:"stamp", stampType, scale, label, x:p.x, y:p.y, rot:0 };
+    state.infraShapes.push(obj);
+    renderInfra();
+    toast("Stamp placed (Select to move).");
+    return;
+  }
+
+  if(state.appMode==="build" && state.tool==="label"){
+    const text=($("labelText").value||"").trim() || "LABEL";
+    const size=parseInt($("labelSize").value,10)||20;
+    const obj={ id:"T-"+cryptoRand(), kind:"label", text, size, x:p.x, y:p.y, rot:0 };
+    state.infraShapes.push(obj);
+    renderInfra();
+    toast("Label placed (Select to move).");
+    return;
+  }
+
+  if(state.appMode==="build" && ["road","river","border","poly"].includes(state.tool)){
+    state.temp.points.push(p);
+    renderTempPreview();
+    return;
+  }
+
+  if(state.appMode==="plan" && (state.tool==="front" || state.tool==="zone")){
+    state.temp.points.push(p);
+    renderTempPreview();
+    return;
+  }
+
+  if(state.appMode==="plan" && state.tool==="note"){
+    const text=prompt("Note text:");
+    if(!text) return;
+    state.shapes.push({ id:"N-"+cryptoRand(), kind:"note", affil:$("drawAffil").value, drawKind:$("drawKind").value, points:[{x:p.x,y:p.y}], text });
+    renderOverlays();
+    return;
+  }
+});
+
+window.addEventListener("pointermove",(ev)=>{
+  if(!state.paint.down) return;
+  if(state.appMode!=="build") return;
+  if(!(state.tool==="paint"||state.tool==="erase")) return;
+  const p=stagePointFromClient(ev);
+  const type = (state.tool==="erase") ? null : $("terrainType").value;
+  paintAt(p.x,p.y,type);
+});
+window.addEventListener("pointerup",()=>{ state.paint.down=false; });
+
+function renderTempPreview(){
+  renderInfra();
+  renderOverlays();
+
+  const pts=state.temp.points;
+  if(pts.length<2) return;
+
+  if(state.appMode==="build" && ["road","river","border"].includes(state.tool)){
+    const stroke = state.tool==="road"?getCss("--road") : state.tool==="river"?getCss("--river") : getCss("--border");
+    const el=document.createElementNS("http://www.w3.org/2000/svg","polyline");
+    el.setAttribute("points", pts.map(p=>`${p.x},${p.y}`).join(" "));
+    el.setAttribute("fill","none");
+    el.setAttribute("stroke",stroke);
+    el.setAttribute("stroke-width", parseInt($("infraWidth").value,10)||7);
+    el.setAttribute("stroke-linecap","round");
+    el.setAttribute("stroke-linejoin","round");
+    el.setAttribute("opacity","0.65");
+    if(state.tool==="border") el.setAttribute("stroke-dasharray","16 10");
+    infraSvg.appendChild(el);
+  }
+
+  if(state.appMode==="build" && state.tool==="poly"){
+    const el=document.createElementNS("http://www.w3.org/2000/svg","polygon");
+    el.setAttribute("points", pts.map(p=>`${p.x},${p.y}`).join(" "));
+    el.setAttribute("fill","#ffffff");
+    el.setAttribute("opacity","0.06");
+    el.setAttribute("stroke","rgba(255,255,255,.55)");
+    el.setAttribute("stroke-width","2");
+    el.setAttribute("stroke-dasharray","10 8");
+    infraSvg.appendChild(el);
+  }
+
+  if(state.appMode==="plan" && state.tool==="front"){
+    const base=affilColor($("drawAffil").value);
+    const el=document.createElementNS("http://www.w3.org/2000/svg","polyline");
+    el.setAttribute("points", pts.map(p=>`${p.x},${p.y}`).join(" "));
+    el.setAttribute("fill","none");
+    el.setAttribute("stroke",base);
+    el.setAttribute("stroke-width","6");
+    el.setAttribute("stroke-linecap","round");
+    el.setAttribute("stroke-linejoin","round");
+    el.setAttribute("opacity","0.65");
+    overlaySvg.appendChild(el);
+  }
+
+  if(state.appMode==="plan" && state.tool==="zone"){
+    const base=affilColor($("drawAffil").value);
+    const el=document.createElementNS("http://www.w3.org/2000/svg","polygon");
+    el.setAttribute("points", pts.map(p=>`${p.x},${p.y}`).join(" "));
+    el.setAttribute("fill",base);
+    el.setAttribute("opacity","0.08");
+    el.setAttribute("stroke",base);
+    el.setAttribute("stroke-width","3");
+    overlaySvg.appendChild(el);
+  }
+}
+
+function pickInfraAt(p){
+  let best=null, bestD=Infinity;
+  for(const s of state.infraShapes){
+    if(!["poi","stamp","label"].includes(s.kind)) continue;
+    const d=dist2(p, {x:s.x,y:s.y});
+    const rad =
+      s.kind==="poi" ? 22 :
+      s.kind==="label" ? 26 :
+      30*(s.scale||1);
+    if(d <= rad*rad && d<bestD){
+      best=s; bestD=d;
+    }
+  }
+  return best;
+}
+function startInfraDrag(ev, obj){
+  state.dragging={ startPoint: stagePointFromClient(ev), startObj:{x:obj.x,y:obj.y} };
+  interaction.setPointerCapture(ev.pointerId);
+
+  function move(e){
+    e.preventDefault();
+    const p=stagePointFromClient(e);
+    const dx=p.x-state.dragging.startPoint.x;
+    const dy=p.y-state.dragging.startPoint.y;
+    obj.x=clamp(0,state.stage.w, state.dragging.startObj.x+dx);
+    obj.y=clamp(0,state.stage.h, state.dragging.startObj.y+dy);
+    renderInfra();
+  }
+  function up(e){
+    if(e) e.preventDefault();
+    try{ interaction.releasePointerCapture(ev.pointerId); }catch{}
+    interaction.removeEventListener("pointermove",move);
+    interaction.removeEventListener("pointerup",up);
+    interaction.removeEventListener("pointercancel",up);
+    state.dragging=null;
+  }
+  interaction.addEventListener("pointermove",move);
+  interaction.addEventListener("pointerup",up);
+  interaction.addEventListener("pointercancel",up);
+}
+
+function unitCenter(u){ return {x:u.x+u.w/2, y:u.y+u.h/2}; }
+function recomputeAOTerritory(){
+  const cap=$("togCapture");
+  if(cap && !cap.checked) return;
+  const zones=state.shapes.filter(s=>s.kind==="zone" && s.drawKind==="ao" && s.points?.length>=3);
+  if(!zones.length) return;
+
+  for(const z of zones){
+    if(!z.owner) z.owner=z.affil||"unknown";
+    const inside=new Set();
+    for(const u of state.units){
+      const c=unitCenter(u);
+      if(pointInPolygon(c,z.points)) inside.add(u.affil);
+    }
+    if(inside.size>=2){ z.contested=true; }
+    else if(inside.size===1){ z.contested=false; z.owner=[...inside][0]; }
+    else { z.contested=false; }
+  }
+  renderOverlays();
+}
+
+function applyLayerToggles(){
+  mapImgEl.style.display = $("togMapImg").checked ? "block" : "none";
+  tileCanvas.style.display = $("togTerrain").checked ? "block" : "none";
+  infraSvg.style.display = $("togInfra").checked ? "block" : "none";
+  unitsLayer.style.display = $("togUnits").checked ? "block" : "none";
+  overlaySvg.style.display = $("togOverlays").checked ? "block" : "none";
+}
+["togMapImg","togTerrain","togInfra","togUnits","togOverlays"].forEach(id=>{
+  $(id).addEventListener("change", applyLayerToggles);
+});
+
+function pushSnapshot(label=null){
+  state.snapshots.push({
+    label: label ?? `Turn ${state.turn}`,
+    turn: state.turn,
+    stage: {w:state.stage.w,h:state.stage.h},
+    mapDataUrl: state.mapDataUrl,
+    terrain: JSON.parse(JSON.stringify(terrain)),
+    infraShapes: JSON.parse(JSON.stringify(state.infraShapes)),
+    shapes: JSON.parse(JSON.stringify(state.shapes)),
+    units: JSON.parse(JSON.stringify(state.units)),
+    idCounters: JSON.parse(JSON.stringify(state.idCounters)),
+    templates: JSON.parse(JSON.stringify(state.templates)),
+  });
+  $("turnSlider").max = Math.max(0, state.snapshots.length-1);
+  $("turnSlider").value = state.snapshots.length-1;
+  $("turnLabel").textContent = state.turn;
+}
+function loadSnapshot(idx){
+  const s=state.snapshots[idx]; if(!s) return;
+  state.turn=s.turn||0;
+  $("turnLabel").textContent=state.turn;
+
+  applyStageSize(s.stage?.w||1600, s.stage?.h||900);
+
+  state.mapDataUrl=s.mapDataUrl||"";
+  if(state.mapDataUrl) mapImgEl.src=state.mapDataUrl; else mapImgEl.removeAttribute("src");
+
+  terrain=s.terrain||{};
+  state.infraShapes=s.infraShapes||[];
+  state.shapes=s.shapes||[];
+  state.units=s.units||[];
+  state.idCounters=s.idCounters||{};
+  if(s.templates) state.templates=s.templates;
+
+  redrawTerrain(); renderInfra(); renderOverlays(); renderUnits();
+  rebuildUnitTypeDropdown($("unitSearch").value||"");
+  rebuildQuickBar();
+  recomputeAOTerritory();
+}
+$("btnSnap").onclick=()=>{ pushSnapshot(); toast("Snapshot saved."); };
+$("btnNewTurn").onclick=()=>{ state.turn+=1; $("turnLabel").textContent=state.turn; toast(`Turn ${state.turn}`); };
+$("turnSlider").addEventListener("input",(e)=>loadSnapshot(parseInt(e.target.value,10)));
+
+$("btnExport").onclick=()=>{
+  $("ioBox").value = JSON.stringify({
+    version:"7.1",
+    stage:{w:state.stage.w,h:state.stage.h},
+    mapDataUrl: state.mapDataUrl,
+    terrain,
+    infraShapes: state.infraShapes,
+    shapes: state.shapes,
+    units: state.units,
+    snapshots: state.snapshots,
+    idCounters: state.idCounters,
+    templates: state.templates
+  }, null, 2);
+  toast("Exported JSON.");
+};
+$("btnImport").onclick=()=>{
+  try{
+    const p=JSON.parse($("ioBox").value.trim());
+    applyStageSize(p.stage?.w||1600, p.stage?.h||900);
+
+    state.mapDataUrl=p.mapDataUrl||"";
+    if(state.mapDataUrl) mapImgEl.src=state.mapDataUrl; else mapImgEl.removeAttribute("src");
+
+    terrain=p.terrain||{};
+    state.infraShapes=p.infraShapes||[];
+    state.shapes=p.shapes||[];
+    state.units=p.units||[];
+    state.snapshots=p.snapshots||[];
+    state.idCounters=p.idCounters||{};
+    state.templates=p.templates||JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+
+    redrawTerrain(); renderInfra(); renderOverlays(); renderUnits();
+    rebuildUnitTypeDropdown($("unitSearch").value||"");
+    rebuildQuickBar();
+    recomputeAOTerritory();
+    toast("Imported JSON.");
+  }catch(err){
+    toast("Import failed: "+err.message);
+  }
+};
+$("btnNewBlank").onclick=()=>{
+  state.mapDataUrl=""; mapImgEl.removeAttribute("src");
+  terrain={}; state.infraShapes=[]; state.shapes=[]; state.units=[];
+  state.snapshots=[]; state.turn=0; state.idCounters={};
+  state.templates=JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+  redrawTerrain(); renderInfra(); renderOverlays(); renderUnits();
+  rebuildUnitTypeDropdown("");
+  rebuildQuickBar();
+  pushSnapshot("Turn 0 (Start)");
+  toast("New blank scenario.");
+};
+
+$("btnExportPng").onclick=exportStagePng;
+async function exportStagePng(){
+  const W=state.stage.w, H=state.stage.h;
+  const out=document.createElement("canvas");
+  out.width=W; out.height=H;
+  const octx=out.getContext("2d");
+
+  if(state.mapDataUrl && $("togMapImg").checked){
+    const img=await dataUrlToImage(state.mapDataUrl);
+    drawContain(octx,img,0,0,W,H);
+  }
+  if($("togTerrain").checked) octx.drawImage(tileCanvas,0,0);
+
+  if($("togInfra").checked){
+    const img=await dataUrlToImage(svgToDataUrl(infraSvg,W,H));
+    octx.drawImage(img,0,0);
+  }
+  if($("togOverlays").checked){
+    const img=await dataUrlToImage(svgToDataUrl(overlaySvg,W,H));
+    octx.drawImage(img,0,0);
+  }
+  if($("togUnits").checked){
+    for(const u of state.units){
+      const svg=unitSvg(u);
+      const url="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
+      const img=await dataUrlToImage(url);
+
+      octx.save();
+      const cx=u.x+u.w/2, cy=u.y+u.h/2;
+      octx.translate(cx,cy);
+      octx.rotate((u.rot||0)*Math.PI/180);
+      octx.translate(-u.w/2,-u.h/2);
+      octx.drawImage(img,0,0,u.w,u.h);
+      octx.restore();
+    }
+  }
+
+  const url=out.toDataURL("image/png");
+  const a=document.createElement("a");
+  a.href=url; a.download=`sitmap_turn_${state.turn}.png`; a.click();
+  toast("Exported PNG.");
+}
+function svgToDataUrl(svgEl,w,h){
+  const clone=svgEl.cloneNode(true);
+  clone.setAttribute("xmlns","http://www.w3.org/2000/svg");
+  clone.setAttribute("width",w);
+  clone.setAttribute("height",h);
+  const xml=new XMLSerializer().serializeToString(clone);
+  return "data:image/svg+xml;charset=utf-8,"+encodeURIComponent(xml);
+}
+function dataUrlToImage(url){
+  return new Promise((res,rej)=>{
+    const img=new Image();
+    img.onload=()=>res(img);
+    img.onerror=rej;
+    img.src=url;
+  });
+}
+function drawContain(ctx,img,x,y,w,h){
+  const ir=img.width/img.height, r=w/h;
+  let dw=w, dh=h, dx=x, dy=y;
+  if(ir>r){ dh=w/ir; dy=y+(h-dh)/2; }
+  else { dw=h*ir; dx=x+(w-dw)/2; }
+  ctx.drawImage(img,dx,dy,dw,dh);
+}
+
+$("btnAddCustomType").onclick=()=>{
+  const name=($("customName").value||"").trim();
+  if(!name){ toast("Type a unit name first."); return; }
+  const icon=$("customIcon").value;
+  const quick=$("customQuick").checked;
+  let base=name.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"") || "custom";
+  let key=base, i=2;
+  while(state.templates[key]){ key=base+"_"+i; i++; }
+  state.templates[key]={name,icon,quick};
+  rebuildUnitTypeDropdown($("unitSearch").value||"");
+  rebuildQuickBar();
+  $("customName").value=""; $("customQuick").checked=false;
+  toast("Custom type added.");
+};
+$("btnResetTypes").onclick=()=>{
+  state.templates=JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+  rebuildUnitTypeDropdown($("unitSearch").value||"");
+  rebuildQuickBar();
+  toast("Defaults restored.");
+};
+
+$("btnHelp").onclick=()=>{
+  alert(`WAR TRACKER v7.1 FULL (Fixed)
+
+War Plan:
+- Select: drag/resize/rotate units ✅
+- Front: click points → Finish
+- Zone/AO: click 3+ points → Finish (AO auto-captures if enabled)
+- Note: click to place text
+
+Build Map:
+- Paint: click/drag to paint terrain
+- Polygon island: click 3+ points → Finish (fills as selected terrain)
+- Roads/rivers/borders: click points → Finish
+- Labels/POIs/Stamps: click to place; Select to drag; R to rotate
+
+Keys: Esc cancel • Del delete • R rotate POI/stamp/label`);
+};
+
+function init(){
+  loadTemplates(true);
+  applyStageSize(1600,900);
+  setZoom(1);
+  setAppMode("build");
+  setTool("paint");
+  applyLayerToggles();
+  pushSnapshot("Turn 0 (Start)");
+  updateInteractionPointerEvents();
+  toast("v7.1 FULL loaded: map builder + war plan + drag fixed.");
+}
+init();
+</script>
+</body>
+</html>
