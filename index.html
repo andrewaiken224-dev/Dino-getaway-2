@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pako Forever 3D</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="hud">
+      <h1>Pako Forever 3D: Hyper Pursuit Ultra</h1>
+
+      <div class="grid">
+        <div class="row"><label for="mapSelect">Map</label><select id="mapSelect"></select></div>
+        <div class="row"><label for="modeSelect">Mode</label><select id="modeSelect"></select></div>
+        <div class="row"><label for="weatherSelect">Weather</label><select id="weatherSelect"></select></div>
+        <div class="row"><label for="difficultySelect">Difficulty</label><select id="difficultySelect"></select></div>
+        <div class="row"><label for="skinSelect">Car Skin</label><select id="skinSelect"></select></div>
+        <div class="row"><label for="neonSelect">Neon</label><select id="neonSelect"></select></div>
+        <div class="row"><label for="zoomRange">Camera</label><input id="zoomRange" type="range" min="0.65" max="1.25" step="0.01" value="0.82" /></div>
+      </div>
+
+      <div class="buttonRow">
+        <button id="randomMapBtn" type="button">Random Map</button>
+        <button id="randomWeatherBtn" type="button">Random Weather</button>
+        <button id="randomChallengeBtn" type="button">Random Challenge</button>
+        <button id="clearBestBtn" type="button">Clear Best</button>
+        <button id="photoModeBtn" type="button">Photo Mode</button>
+      </div>
+
+      <div class="stats">
+        <span id="score">Score: 0</span>
+        <span id="best">Best: 0</span>
+        <span id="combo">Combo: 0x</span>
+        <span id="speed">Speed: 0</span>
+        <span id="heat">Heat: 0%</span>
+        <span id="lives">Lives: 3</span>
+        <span id="wave">Wave: 1</span>
+      </div>
+
+      <div class="mutators">
+        <label><input id="chaosTrafficToggle" type="checkbox" /> Chaos Traffic</label>
+        <label><input id="densePickupsToggle" type="checkbox" /> Dense Pickups</label>
+        <label><input id="lowGravityToggle" type="checkbox" /> Floaty Drift</label>
+      </div>
+
+      <div class="meta">
+        <span id="objective">Objective: Survive 25s</span>
+        <span id="eventLog">Loading...</span>
+        <span id="runInfo">Distance: 0m · Near Misses: 0 · EMP: 0</span>
+      </div>
+
+      <div class="panelGrid">
+        <details id="missionPanel" open>
+          <summary>Mission Board</summary>
+          <ul id="missionList">
+            <li>Survive as long as possible.</li>
+            <li>Collect pickups to build score.</li>
+            <li>Use EMP to break chaser clusters.</li>
+          </ul>
+        </details>
+
+        <details id="achievementsPanel" open>
+          <summary>Run Achievements</summary>
+          <ul id="achievementList">
+            <li>Speed Demon: Hit 280 speed.</li>
+            <li>Ghost Threader: 12 near misses.</li>
+            <li>EMP Tactician: Use EMP 5 times.</li>
+          </ul>
+        </details>
+      </div>
+
+      <p>WASD/Arrows drive · Space brake · Shift boost · E EMP · P pause · R reset · M next map</p>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <script src="src/maps.js"></script>
+    <script src="src/main.js"></script>
+  </body>
+</html>
