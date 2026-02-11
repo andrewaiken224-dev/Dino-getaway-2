@@ -23,7 +23,7 @@ body {
   top: 0.75rem;
   left: 0.75rem;
   z-index: 10;
-  width: min(690px, calc(100vw - 1.5rem));
+  width: min(860px, calc(100vw - 1.5rem));
   background: linear-gradient(160deg, rgba(9, 14, 25, 0.9), rgba(7, 18, 33, 0.72));
   border: 1px solid rgba(130, 176, 255, 0.4);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
@@ -56,6 +56,23 @@ body {
   color: #c5d7ff;
 }
 
+.buttonRow {
+  margin-top: 0.55rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+button {
+  background: linear-gradient(180deg, #1d3f7f, #1a2b56);
+  color: #eef4ff;
+  border: 1px solid #4b6bc6;
+  border-radius: 9px;
+  font-size: 0.78rem;
+  padding: 0.34rem 0.55rem;
+  cursor: pointer;
+}
+
 .stats {
   margin: 0.65rem 0;
   display: flex;
@@ -71,15 +88,53 @@ body {
   padding: 0.2rem 0.48rem;
 }
 
+.mutators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin: 0.2rem 0 0.45rem;
+  font-size: 0.8rem;
+  color: #d2def8;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.35rem;
+}
+
 #objective,
-#eventLog {
+#eventLog,
+#runInfo {
   font-size: 0.82rem;
-  margin: 0.2rem 0;
   color: #dbe7ff;
 }
 
 #eventLog {
   color: #95f0ff;
+}
+
+#runInfo {
+  color: #b6ffd5;
+}
+
+details {
+  border: 1px solid rgba(132, 156, 223, 0.3);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  background: rgba(11, 18, 34, 0.45);
+}
+
+summary {
+  cursor: pointer;
+  font-size: 0.83rem;
+}
+
+#missionList {
+  margin: 0.35rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.78rem;
 }
 
 select {
@@ -106,5 +161,9 @@ p {
 @media (max-width: 700px) {
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .buttonRow {
+    flex-direction: column;
   }
 }

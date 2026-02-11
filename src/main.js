@@ -4,6 +4,13 @@ const mapSelect = document.getElementById('mapSelect');
 const modeSelect = document.getElementById('modeSelect');
 const weatherSelect = document.getElementById('weatherSelect');
 const difficultySelect = document.getElementById('difficultySelect');
+const randomMapBtn = document.getElementById('randomMapBtn');
+const randomWeatherBtn = document.getElementById('randomWeatherBtn');
+const clearBestBtn = document.getElementById('clearBestBtn');
+const chaosTrafficToggle = document.getElementById('chaosTrafficToggle');
+const densePickupsToggle = document.getElementById('densePickupsToggle');
+const lowGravityToggle = document.getElementById('lowGravityToggle');
+
 const scoreEl = document.getElementById('score');
 const bestEl = document.getElementById('best');
 const comboEl = document.getElementById('combo');
@@ -13,6 +20,8 @@ const livesEl = document.getElementById('lives');
 const waveEl = document.getElementById('wave');
 const objectiveEl = document.getElementById('objective');
 const eventEl = document.getElementById('eventLog');
+const runInfoEl = document.getElementById('runInfo');
+const missionListEl = document.getElementById('missionList');
 
 const { MAP_LIBRARY, GAME_MODES, pickSpawnPoint } = window.GAME_DATA || {
   MAP_LIBRARY: [],
@@ -26,6 +35,7 @@ const WEATHER_MODES = [
   { id: 'fog', label: 'Fog', drag: 0.992, visibility: 0.72, particles: 80, lightning: false },
   { id: 'storm', label: 'Storm', drag: 0.978, visibility: 0.62, particles: 180, lightning: true },
   { id: 'night', label: 'Neon Night', drag: 0.99, visibility: 0.8, particles: 50, lightning: false },
+  { id: 'sand', label: 'Dust Storm', drag: 0.982, visibility: 0.66, particles: 140, lightning: false },
 ];
 
 const DIFFICULTY = [
@@ -33,6 +43,7 @@ const DIFFICULTY = [
   { id: 'driver', label: 'Driver', heatRate: 1, chaserScale: 1, scoreScale: 1, lives: 3 },
   { id: 'elite', label: 'Elite', heatRate: 1.18, chaserScale: 1.18, scoreScale: 1.2, lives: 3 },
   { id: 'legend', label: 'Legend', heatRate: 1.4, chaserScale: 1.32, scoreScale: 1.45, lives: 2 },
+  { id: 'nightmare', label: 'Nightmare', heatRate: 1.65, chaserScale: 1.55, scoreScale: 1.8, lives: 2 },
 ];
 
 const keys = { up: false, down: false, left: false, right: false, brake: false, boost: false };
@@ -50,11 +61,18 @@ const player = {
   justNearMiss: 0,
 };
 
+const runStats = {
+  distance: 0,
+  nearMisses: 0,
+  empUses: 0,
+};
+
 const game = {
   map: null,
   mode: null,
   weather: WEATHER_MODES[0],
   difficulty: DIFFICULTY[1],
+  mutators: { chaosTraffic: false, densePickups: false, lowGravity: false },
   chasers: [],
   traffic: [],
   obstacles: [],
@@ -68,6 +86,7 @@ const game = {
   paused: false,
   timer: 0,
   objective: null,
+  objectiveHistory: [],
   messageTimer: 0,
   bestScore: 0,
   shake: 0,
@@ -104,6 +123,23 @@ function saveBestScore() {
     game.bestScore = Math.floor(game.score);
     window.localStorage.setItem(scoreKey(), String(game.bestScore));
   }
+}
+
+function updateMissionBoard() {
+  const lines = [
+    `Current: ${objectiveEl.textContent.replace('Objective: ', '')}`,
+    `Run heat target: Wave ${game.wave + 1} at ${Math.floor(game.nextWaveHeat)}%`,
+    game.mutators.chaosTraffic ? 'Mutator ON: Chaos Traffic' : 'Mutator OFF: Chaos Traffic',
+    game.mutators.densePickups ? 'Mutator ON: Dense Pickups' : 'Mutator OFF: Dense Pickups',
+    game.mutators.lowGravity ? 'Mutator ON: Floaty Drift' : 'Mutator OFF: Floaty Drift',
+  ];
+
+  missionListEl.innerHTML = '';
+  lines.forEach((line) => {
+    const li = document.createElement('li');
+    li.textContent = line;
+    missionListEl.append(li);
+  });
 }
 
 function populateSelectors() {
@@ -147,11 +183,41 @@ function populateSelectors() {
     repopulateParticles();
   });
   difficultySelect.addEventListener('change', reset);
+
+  randomMapBtn.addEventListener('click', () => {
+    mapSelect.value = String(Math.floor(Math.random() * MAP_LIBRARY.length));
+    reset();
+  });
+
+  randomWeatherBtn.addEventListener('click', () => {
+    const idx = Math.floor(Math.random() * WEATHER_MODES.length);
+    weatherSelect.value = WEATHER_MODES[idx].id;
+    game.weather = WEATHER_MODES[idx];
+    repopulateParticles();
+    setEventMessage(`Weather switched to ${WEATHER_MODES[idx].label}`);
+  });
+
+  clearBestBtn.addEventListener('click', () => {
+    window.localStorage.removeItem(scoreKey());
+    game.bestScore = 0;
+    bestEl.textContent = 'Best: 0';
+    setEventMessage('Best score cleared for current setup.', 1.5);
+  });
+
+  const syncMutators = () => {
+    game.mutators.chaosTraffic = chaosTrafficToggle.checked;
+    game.mutators.densePickups = densePickupsToggle.checked;
+    game.mutators.lowGravity = lowGravityToggle.checked;
+    updateMissionBoard();
+  };
+  chaosTrafficToggle.addEventListener('change', syncMutators);
+  densePickupsToggle.addEventListener('change', syncMutators);
+  lowGravityToggle.addEventListener('change', syncMutators);
 }
 
 function createObstacles(map) {
   const arr = [];
-  for (let i = 0; i < 110; i += 1) {
+  for (let i = 0; i < 120; i += 1) {
     arr.push({
       x: randomInRange(-map.halfW + 100, map.halfW - 100),
       y: randomInRange(-map.halfH + 100, map.halfH - 100),
@@ -164,8 +230,9 @@ function createObstacles(map) {
 }
 
 function createTraffic(map) {
+  const count = game.mutators.chaosTraffic ? 56 : 36;
   const arr = [];
-  for (let i = 0; i < 34; i += 1) {
+  for (let i = 0; i < count; i += 1) {
     arr.push({
       x: randomInRange(-map.halfW + 80, map.halfW - 80),
       y: randomInRange(-map.halfH + 80, map.halfH - 80),
@@ -180,8 +247,9 @@ function createTraffic(map) {
 }
 
 function createPickups(map) {
+  const count = game.mutators.densePickups ? 100 : 70;
   const pickups = [];
-  for (let i = 0; i < 65; i += 1) {
+  for (let i = 0; i < count; i += 1) {
     pickups.push({
       x: randomInRange(-map.halfW + 120, map.halfW - 120),
       y: randomInRange(-map.halfH + 120, map.halfH - 120),
@@ -210,6 +278,7 @@ function reset() {
   const map = MAP_LIBRARY[Number(mapSelect.value)] || MAP_LIBRARY[0];
   const mode = GAME_MODES[Number(modeSelect.value)] || GAME_MODES[0];
   const difficulty = DIFFICULTY.find((d) => d.id === difficultySelect.value) || DIFFICULTY[1];
+
   game.map = map;
   game.mode = mode;
   game.difficulty = difficulty;
@@ -221,11 +290,17 @@ function reset() {
   game.nextWaveHeat = 20;
   game.lives = difficulty.lives;
   game.objective = { type: 'survive', remaining: 25 };
+  game.objectiveHistory = [];
   game.chasers = [];
-  game.traffic = createTraffic(map);
   game.obstacles = createObstacles(map);
+  game.traffic = createTraffic(map);
   game.pickups = createPickups(map);
   game.hazardZones = [];
+
+  runStats.distance = 0;
+  runStats.nearMisses = 0;
+  runStats.empUses = 0;
+
   player.boost = 100;
   player.emp = 100;
   player.shield = 0;
@@ -247,6 +322,7 @@ function reset() {
   repopulateParticles();
   loadBestScore();
   setEventMessage('Run started. Build combo with near misses + objectives.');
+  updateMissionBoard();
 }
 
 function spawnChaser(seed, sx = player.x, sy = player.y) {
@@ -298,9 +374,12 @@ function useEmpPulse() {
     setEventMessage('EMP low. Collect EMP cells.');
     return;
   }
+
   player.emp -= 24;
+  runStats.empUses += 1;
   game.flash = 0.65;
   game.shake = 14;
+
   let stunned = 0;
   for (const chaser of game.chasers) {
     const d = Math.hypot(player.x - chaser.x, player.y - chaser.y);
@@ -315,6 +394,12 @@ function useEmpPulse() {
   setEventMessage(`EMP pulse! Disabled ${stunned} chasers.`);
 }
 
+function setObjective(type, remaining) {
+  game.objective = { type, remaining };
+  game.objectiveHistory.push(`${type}:${remaining}`);
+  if (game.objectiveHistory.length > 8) game.objectiveHistory.shift();
+}
+
 function updateObjective(dt) {
   if (!game.objective) return;
 
@@ -323,19 +408,25 @@ function updateObjective(dt) {
     if (game.objective.remaining <= 0) {
       game.score += 1200;
       setEventMessage('Objective complete +1200');
-      game.objective = Math.random() < 0.55 ? { type: 'pickup', remaining: 6 } : { type: 'heat', remaining: 55 };
+      setObjective(Math.random() < 0.55 ? 'pickup' : 'heat', Math.random() < 0.55 ? 6 : 55);
     }
   } else if (game.objective.type === 'pickup') {
     if (game.objective.remaining <= 0) {
       game.score += 1700;
       setEventMessage('Pickup objective complete +1700');
-      game.objective = { type: 'survive', remaining: 34 };
+      setObjective('survive', 34);
     }
   } else if (game.objective.type === 'heat') {
     if (game.heat >= game.objective.remaining) {
       game.score += 2200;
       setEventMessage('Heat challenge complete +2200');
-      game.objective = { type: 'survive', remaining: 36 };
+      setObjective('survive', 36);
+    }
+  } else if (game.objective.type === 'distance') {
+    if (runStats.distance >= game.objective.remaining) {
+      game.score += 2500;
+      setEventMessage('Distance challenge complete +2500');
+      setObjective('survive', 30);
     }
   }
 }
@@ -343,19 +434,26 @@ function updateObjective(dt) {
 function handleWaveEscalation() {
   if (game.heat < game.nextWaveHeat) return;
   game.wave += 1;
-  game.nextWaveHeat = Math.min(95, game.nextWaveHeat + 15);
+  game.nextWaveHeat = Math.min(98, game.nextWaveHeat + 12);
+
   for (let i = 0; i < 2 + Math.floor(game.wave / 3); i += 1) {
     spawnChaser(game.chasers.length + i, player.x, player.y);
   }
+
   if (game.wave % 2 === 0) spawnHazardBurst();
+  if (game.wave % 3 === 0) setObjective('distance', runStats.distance + 4200);
   setEventMessage(`Wave ${game.wave}! Reinforcements inbound.`);
+  updateMissionBoard();
 }
 
 function handleNearMiss(distance, speed) {
   if (distance > 65 || speed < 140) return;
+
   const now = performance.now() * 0.001;
   if (now - player.justNearMiss < 0.35) return;
+
   player.justNearMiss = now;
+  runStats.nearMisses += 1;
   game.combo = Math.min(20, game.combo + 0.6);
   game.score += 85;
 }
@@ -466,11 +564,13 @@ function updateTraffic(dt) {
     t.laneTimer -= dt;
     if (t.laneTimer <= 0) {
       const angle = randomInRange(0, Math.PI * 2);
-      const speed = t.kind === 'truck' ? randomInRange(38, 66) : randomInRange(65, 110);
+      const chaosFactor = game.mutators.chaosTraffic ? 1.45 : 1;
+      const speed = (t.kind === 'truck' ? randomInRange(38, 66) : randomInRange(65, 110)) * chaosFactor;
       t.vx = Math.cos(angle) * speed;
       t.vy = Math.sin(angle) * speed;
       t.laneTimer = randomInRange(1.2, 4.8);
     }
+
     t.x += t.vx * dt;
     t.y += t.vy * dt;
     t.heading = Math.atan2(t.vy, t.vx);
@@ -505,7 +605,8 @@ function update(dt) {
   const reverse = keys.down ? mode.reverseAcceleration : 0;
   const turnInput = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
 
-  player.angularVelocity += turnInput * mode.turnSpeed * dt * (keys.brake ? 1.32 : 1);
+  const gravityFactor = game.mutators.lowGravity ? 0.65 : 1;
+  player.angularVelocity += turnInput * mode.turnSpeed * dt * (keys.brake ? 1.32 : 1.02);
   player.angularVelocity *= keys.brake ? 0.82 : 0.92;
   player.heading += player.angularVelocity * dt;
 
@@ -519,6 +620,7 @@ function update(dt) {
   } else {
     player.boost = Math.min(100, player.boost + 8 * dt);
   }
+
   player.emp = Math.min(100, player.emp + 7 * dt);
 
   player.vx += headingX * (accel + boostForce) * dt;
@@ -526,9 +628,9 @@ function update(dt) {
   player.vx -= headingX * reverse * dt;
   player.vy -= headingY * reverse * dt;
 
-  const friction = (keys.brake ? mode.brakeFriction : mode.friction) * weatherGrip;
-  player.vx *= Math.pow(friction, dt * 60);
-  player.vy *= Math.pow(friction, dt * 60);
+  const friction = (keys.brake ? mode.brakeFriction : mode.friction) * weatherGrip * (game.mutators.lowGravity ? 1.03 : 1);
+  player.vx *= Math.pow(friction, dt * 60 * gravityFactor);
+  player.vy *= Math.pow(friction, dt * 60 * gravityFactor);
 
   const speed = Math.hypot(player.vx, player.vy);
   const top = mode.maxSpeed + 90;
@@ -540,6 +642,7 @@ function update(dt) {
 
   player.x += player.vx * dt;
   player.y += player.vy * dt;
+  runStats.distance += speed * dt;
   clampToMap(player);
 
   updateTraffic(dt);
@@ -602,10 +705,14 @@ function update(dt) {
   heatEl.textContent = `Heat: ${Math.floor(game.heat)}%`;
   livesEl.textContent = `Lives: ${game.lives}`;
   waveEl.textContent = `Wave: ${game.wave}`;
+  runInfoEl.textContent = `Distance: ${Math.floor(runStats.distance)}m · Near Misses: ${runStats.nearMisses} · EMP: ${runStats.empUses}`;
 
   if (game.objective?.type === 'survive') objectiveEl.textContent = `Objective: Survive ${Math.ceil(game.objective.remaining)}s`;
   if (game.objective?.type === 'pickup') objectiveEl.textContent = `Objective: Collect ${Math.ceil(game.objective.remaining)} pickups`;
   if (game.objective?.type === 'heat') objectiveEl.textContent = `Objective: Reach Heat ${Math.ceil(game.objective.remaining)}%`;
+  if (game.objective?.type === 'distance') objectiveEl.textContent = `Objective: Drive ${Math.ceil(game.objective.remaining)}m`;
+
+  updateMissionBoard();
 }
 
 function worldToScreen(x, y) {
@@ -727,6 +834,7 @@ function drawVehicle(entity, colors, size) {
     ctx.arc(0, 0, size * 0.9 + Math.sin(game.timer * 17) * 3, 0, Math.PI * 2);
     ctx.stroke();
   }
+
   ctx.restore();
 }
 
@@ -744,7 +852,7 @@ function drawWeather() {
   if (!game.particles.length) return;
   ctx.save();
   ctx.globalAlpha = 0.56;
-  ctx.fillStyle = game.weather.id === 'fog' ? '#e4ebff' : '#b7dbff';
+  ctx.fillStyle = game.weather.id === 'fog' ? '#e4ebff' : game.weather.id === 'sand' ? '#eed0a5' : '#b7dbff';
 
   for (const p of game.particles) {
     p.x += p.vx * 0.016;
@@ -797,17 +905,6 @@ function drawMinimap() {
     ctx.fillStyle =
       pickup.type === 'boost' ? '#7cff70' : pickup.type === 'score' ? '#ffe565' : pickup.type === 'shield' ? '#8fd8ff' : '#fba2fb';
     ctx.fillRect(px - 1, py - 1, 3, 3);
-  }
-
-  for (const zone of game.hazardZones) {
-    const px = x + (zone.x + map.halfW) * sx;
-    const py = y + (zone.y + map.halfH) * sy;
-    const rr = zone.r * sx;
-    ctx.strokeStyle = 'rgba(255, 113, 100, 0.7)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(px, py, rr, 0, Math.PI * 2);
-    ctx.stroke();
   }
 
   const px = x + (player.x + map.halfW) * sx;

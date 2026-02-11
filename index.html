@@ -8,13 +8,20 @@
   </head>
   <body>
     <div id="hud">
-      <h1>Pako Forever 3D: Hyper Pursuit ++</h1>
+      <h1>Pako Forever 3D: Hyper Pursuit Ultra</h1>
       <div class="grid">
         <div class="row"><label for="mapSelect">Map</label><select id="mapSelect"></select></div>
         <div class="row"><label for="modeSelect">Mode</label><select id="modeSelect"></select></div>
         <div class="row"><label for="weatherSelect">Weather</label><select id="weatherSelect"></select></div>
         <div class="row"><label for="difficultySelect">Difficulty</label><select id="difficultySelect"></select></div>
       </div>
+
+      <div class="buttonRow">
+        <button id="randomMapBtn" type="button">Random Map</button>
+        <button id="randomWeatherBtn" type="button">Random Weather</button>
+        <button id="clearBestBtn" type="button">Clear Best</button>
+      </div>
+
       <div class="stats">
         <span id="score">Score: 0</span>
         <span id="best">Best: 0</span>
@@ -24,8 +31,28 @@
         <span id="lives">Lives: 3</span>
         <span id="wave">Wave: 1</span>
       </div>
-      <div id="objective">Objective: Survive 25s</div>
-      <div id="eventLog">Loading...</div>
+
+      <div class="mutators">
+        <label><input id="chaosTrafficToggle" type="checkbox" /> Chaos Traffic</label>
+        <label><input id="densePickupsToggle" type="checkbox" /> Dense Pickups</label>
+        <label><input id="lowGravityToggle" type="checkbox" /> Floaty Drift</label>
+      </div>
+
+      <div class="meta">
+        <span id="objective">Objective: Survive 25s</span>
+        <span id="eventLog">Loading...</span>
+        <span id="runInfo">Distance: 0m · Near Misses: 0 · EMP: 0</span>
+      </div>
+
+      <details id="missionPanel" open>
+        <summary>Mission Board</summary>
+        <ul id="missionList">
+          <li>Survive as long as possible.</li>
+          <li>Collect pickups to build score.</li>
+          <li>Use EMP to break chaser clusters.</li>
+        </ul>
+      </details>
+
       <p>WASD/Arrows drive · Space brake · Shift boost · E EMP · P pause · R reset · M next map</p>
     </div>
     <canvas id="gameCanvas"></canvas>
