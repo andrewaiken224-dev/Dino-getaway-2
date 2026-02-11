@@ -1,1 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FOTW Strategy Board — Builder + Turn Planner</title>
+  <style>
+    :root{
+      --bg:#0b1220; --panel:#111a2b; --panel-2:#0e1625; --line:#22324a; --text:#e8eef7; --muted:#98a8c1;
+      --accent:#7aa7ff; --ok:#2ecc71; --warn:#ffd24a; --danger:#ff5b5b;
+      --friendly:#2b78ff; --hostile:#ff3b3b; --neutral:#2ecc71; --unknown:#ffd24a;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(180deg,#070b12,#0b1220);color:var(--text);font:14px/1.3 Inter,system-ui,Segoe UI,Arial,sans-serif;overflow:hidden}
+    .app{display:grid;grid-template-columns:420px 1fr;height:100vh}
+    .side{background:linear-gradient(180deg,var(--panel),var(--panel-2));border-right:1px solid var(--line);padding:12px;overflow:auto}
+    .card{border:1px solid var(--line);background:rgba(255,255,255,.03);border-radius:14px;padding:12px;margin-bottom:10px}
+    .card h3{margin:0 0 8px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.6px}
+    .row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}
+    button,input,select,textarea{border-radius:10px;border:1px solid #2b3f5b;background:#0d1626;color:var(--text);padding:8px 10px}
+    button{cursor:pointer;font-weight:700}
+    button:hover{border-color:#3e5f8a}
+    textarea{width:100%;min-height:120px}
+    label{font-size:12px;color:var(--muted);display:block;margin:8px 0 5px}
+    .main{display:grid;grid-template-rows:52px 1fr 50px;min-width:0}
+    .bar{display:flex;gap:8px;align-items:center;padding:10px;border-bottom:1px solid var(--line);background:rgba(8,11,18,.75)}
+    .bar.bottom{border-top:1px solid var(--line);border-bottom:0}
+    .badge{padding:5px 9px;border:1px solid #2b3f5b;border-radius:999px;color:var(--muted);font-size:12px}
+    .sp{flex:1}
+    .mapWrap{overflow:auto;padding:30px}
+    .stage{position:relative;width:1600px;height:900px;border:1px dashed rgba(255,255,255,.22);border-radius:14px;background:#0a101c;transform-origin:0 0}
+    #map{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;border-radius:14px}
+    canvas,svg,#units{position:absolute;inset:0;border-radius:14px}
+    #terrain{pointer-events:none}
+    #drawLayer{pointer-events:none}
+    #units{z-index:4}
+    #inputLayer{z-index:5;pointer-events:auto}
+    .unit{position:absolute;width:160px;height:96px;transform-origin:center center;cursor:grab;user-select:none}
+    .unit.selected{outline:2px solid rgba(122,167,255,.95);outline-offset:3px;border-radius:10px}
+    .unit svg{filter:drop-shadow(0 5px 12px rgba(0,0,0,.45))}
+    .small{font-size:12px;color:var(--muted)}
+    .kpi{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .kpi div{border:1px solid #2b3f5b;border-radius:10px;padding:8px;background:#0d1626}
+    .toast{position:fixed;right:12px;bottom:12px;max-width:420px;border:1px solid #2b3f5b;background:rgba(17,26,43,.96);padding:9px 10px;border-radius:10px;display:none;font-weight:700}
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="card">
+      <h3>Mode</h3>
+      <div class="row">
+        <button id="modeBuild">Build</button>
+        <button id="modePlan">Plan</button>
+      </div>
+      <div class="small" style="margin-top:8px">This board is for fictional game visualization / classroom slides.</div>
+    </div>
 
+    <div class="card">
+      <h3>Map</h3>
+      <div class="row"><input id="file" type="file" accept="image/*" /><button id="clearMap">Clear</button></div>
+      <label>Stage size</label>
+      <div class="row"><input id="w" type="number" value="1600" min="400" step="100" /><input id="h" type="number" value="900" min="300" step="50" /></div>
+      <div class="row"><button id="applySize">Apply</button><button id="fit">Fit</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Terrain Brush</h3>
+      <div class="row"><button id="toolPaint">Paint</button><button id="toolErase">Erase</button><button id="toolSelect">Select</button></div>
+      <label>Grid</label><select id="grid"><option>10</option><option selected>20</option><option>30</option><option>40</option></select>
+      <label>Brush</label><select id="brush"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+      <label>Type</label><select id="terrainType"><option value="sea">Sea</option><option value="land">Land</option><option value="forest">Forest</option><option value="urban">Urban</option><option value="mountain">Mountain</option></select>
+      <div class="row"><button id="clearTerrain">Clear Terrain</button><button id="smooth">Smooth</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Units</h3>
+      <div class="row"><select id="aff"><option value="friendly">Friendly</option><option value="hostile">Hostile</option><option value="neutral">Neutral</option><option value="unknown">Unknown</option></select><select id="domain"><option>land</option><option>air</option><option>naval</option></select></div>
+      <div class="row"><input id="name" placeholder="Unit label" /><button id="addUnit">Add</button></div>
+      <div class="row"><button id="delSel">Delete Selected</button><button id="nudge">Nudge +10,+10</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Turns + Notes</h3>
+      <div class="row"><button id="snapshot">Snapshot</button><button id="newTurn">Next Turn</button></div>
+      <label>Turn scrub</label><input id="turn" type="range" min="0" max="0" value="0" />
+      <label>Turn note</label><input id="turnNote" placeholder="Optional turn note" />
+    </div>
+
+    <div class="card">
+      <h3>Save / Load</h3>
+      <div class="row"><button id="exp">Export JSON</button><button id="imp">Import JSON</button></div>
+      <textarea id="io" placeholder="Scenario JSON appears here"></textarea>
+    </div>
+
+    <div class="card">
+      <h3>Dashboard</h3>
+      <div class="kpi">
+        <div><b id="kUnits">0</b><div class="small">Units</div></div>
+        <div><b id="kTiles">0</b><div class="small">Painted Tiles</div></div>
+        <div><b id="kTurns">0</b><div class="small">Snapshots</div></div>
+        <div><b id="kFPS">—</b><div class="small">Render ms</div></div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="bar">
+      <span class="badge" id="bMode">Mode: Build</span>
+      <span class="badge" id="bTool">Tool: Paint</span>
+      <span class="badge" id="bSel">Selected: none</span>
+      <span class="sp"></span>
+      <button id="zoomOut">-</button><button id="zoomIn">+</button><button id="zoomReset">Reset</button>
+      <span class="badge" id="zoomTxt">100%</span>
+    </div>
+
+    <div class="mapWrap" id="mapWrap">
+      <div class="stage" id="stage">
+        <img id="map" alt="map" />
+        <canvas id="terrain"></canvas>
+        <svg id="drawLayer" viewBox="0 0 1600 900"></svg>
+        <div id="units"></div>
+        <div id="inputLayer"></div>
+      </div>
+    </div>
+
+    <div class="bar bottom">
+      <span class="badge">Tip: In Plan mode, use Select tool to drag units.</span>
+      <span class="sp"></span>
+      <span class="badge">Ctrl+Z Undo</span>
+      <span class="badge">Ctrl+Y Redo</span>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const S={stage:{w:1600,h:900,zoom:1},mode:'build',tool:'paint',map:'',paint:{grid:20,brush:2,type:'sea',down:false},terrain:{},units:[],selected:null,snaps:[],turn:0,turnNotes:{},ids:{friendly:0,hostile:0,neutral:0,unknown:0},history:[],future:[]};
+const COLORS={sea:'#1c4f9a',land:'#2f7a4a',forest:'#1f5a3a',urban:'#6f7a86',mountain:'#7a6a57'};
+const AFF={friendly:'#2b78ff',hostile:'#ff3b3b',neutral:'#2ecc71',unknown:'#ffd24a'};
+const stage=$('stage'),wrap=$('mapWrap'),input=$('inputLayer'),units=$('units'),map=$('map'),terrainCan=$('terrain'),ctx=terrainCan.getContext('2d');
+
+function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',2200)}
+const clamp=(a,b,v)=>Math.max(a,Math.min(b,v));
+const deep=v=>JSON.parse(JSON.stringify(v));
+function k(x,y){return x+'_'+y}
+function stagePt(ev){const r=stage.getBoundingClientRect();return{x:(ev.clientX-r.left)/S.stage.zoom,y:(ev.clientY-r.top)/S.stage.zoom}}
+function setMode(m){S.mode=m;$('bMode').textContent='Mode: '+(m==='build'?'Build':'Plan');toast('Mode: '+m);if(m==='plan'&&S.tool==='paint')setTool('select')}
+function setTool(t){S.tool=t;$('bTool').textContent='Tool: '+t[0].toUpperCase()+t.slice(1)}
+function setZoom(z){S.stage.zoom=clamp(.25,3,z);stage.style.transform=`scale(${S.stage.zoom})`;$('zoomTxt').textContent=Math.round(S.stage.zoom*100)+'%'}
+function fit(){const sx=(wrap.clientWidth-60)/S.stage.w,sy=(wrap.clientHeight-60)/S.stage.h;setZoom(Math.min(sx,sy,1.8));wrap.scrollLeft=0;wrap.scrollTop=0}
+function applySize(w,h){S.stage.w=w;S.stage.h=h;stage.style.width=w+'px';stage.style.height=h+'px';terrainCan.width=w;terrainCan.height=h;$('drawLayer').setAttribute('viewBox',`0 0 ${w} ${h}`);renderAll();fit()}
+
+function pushHistory(){S.history.push(deep({terrain:S.terrain,units:S.units,ids:S.ids,snaps:S.snaps,turn:S.turn,turnNotes:S.turnNotes,map:S.map,stage:S.stage}));if(S.history.length>120)S.history.shift();S.future=[]}
+function restore(snapshot){S.terrain=deep(snapshot.terrain);S.units=deep(snapshot.units);S.ids=deep(snapshot.ids);S.snaps=deep(snapshot.snaps);S.turn=snapshot.turn;S.turnNotes=deep(snapshot.turnNotes);S.map=snapshot.map;S.stage=deep(snapshot.stage);map.src=S.map||'';applySize(S.stage.w,S.stage.h);$('turn').max=Math.max(0,S.snaps.length-1);$('turn').value=Math.max(0,S.snaps.length-1);$('turnNote').value=S.turnNotes[S.turn]||'';renderAll()}
+function undo(){if(!S.history.length)return;S.future.push(deep({terrain:S.terrain,units:S.units,ids:S.ids,snaps:S.snaps,turn:S.turn,turnNotes:S.turnNotes,map:S.map,stage:S.stage}));restore(S.history.pop());toast('Undo')}
+function redo(){if(!S.future.length)return;S.history.push(deep({terrain:S.terrain,units:S.units,ids:S.ids,snaps:S.snaps,turn:S.turn,turnNotes:S.turnNotes,map:S.map,stage:S.stage}));restore(S.future.pop());toast('Redo')}
+
+function paintAt(x,y,type){const gs=S.paint.grid,b=S.paint.brush,gx=Math.floor(x/gs),gy=Math.floor(y/gs);for(let dy=-b+1;dy<=b-1;dy++)for(let dx=-b+1;dx<=b-1;dx++){const nx=gx+dx,ny=gy+dy;if(nx<0||ny<0||nx*gs>=S.stage.w||ny*gs>=S.stage.h)continue;const key=k(nx,ny);if(type===null)delete S.terrain[key];else S.terrain[key]=type;}drawTerrain();updateKpi()}
+function drawTerrain(){const t0=performance.now();ctx.clearRect(0,0,terrainCan.width,terrainCan.height);const gs=S.paint.grid;for(const [key,val] of Object.entries(S.terrain)){const [gx,gy]=key.split('_').map(Number);ctx.globalAlpha=.62;ctx.fillStyle=COLORS[val]||COLORS.land;ctx.fillRect(gx*gs,gy*gs,gs,gs)}ctx.globalAlpha=1;$('kFPS').textContent=(performance.now()-t0).toFixed(2)+' ms'}
+function smooth(){pushHistory();const gs=S.paint.grid,maxX=Math.floor(S.stage.w/gs),maxY=Math.floor(S.stage.h/gs);const cur=deep(S.terrain),next=deep(cur);const isLand=v=>v&&v!=='sea';for(let y=0;y<maxY;y++)for(let x=0;x<maxX;x++){const key=k(x,y),v=cur[key];if(!v)continue;let l=0,s=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const n=cur[k(x+dx,y+dy)];if(!n)continue;if(n==='sea')s++;else l++;}if(v==='sea'&&l>=5)next[key]='land';if(isLand(v)&&s>=6)next[key]='sea';}S.terrain=next;drawTerrain();toast('Smoothed')}
+
+function unitId(aff){S.ids[aff]=(S.ids[aff]||0)+1;return aff.slice(0,1).toUpperCase()+String(S.ids[aff]).padStart(3,'0')}
+function addUnit(){if(S.mode!=='plan'){toast('Switch to Plan mode');return}pushHistory();const aff=$('aff').value,label=$('name').value.trim()||'Unit',u={id:unitId(aff),label,aff,domain:$('domain').value,x:120+Math.random()*220,y:90+Math.random()*210,w:160,h:96,rot:0};S.units.push(u);renderUnits();toast('Unit added')}
+function unitSvg(u){const c=AFF[u.aff]||AFF.friendly;return `<svg viewBox="0 0 200 120" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="14" width="184" height="92" rx="10" fill="rgba(0,0,0,.25)" stroke="${c}" stroke-width="4"/><path d="M84 44 L116 44 M100 30 L100 58" stroke="${c}" stroke-width="4" stroke-linecap="round"/><text x="100" y="77" text-anchor="middle" fill="#e8eef7" font-weight="900" font-size="16">${escapeHtml(u.label)}</text><text x="100" y="94" text-anchor="middle" fill="#9fb0c7" font-size="11">${u.id} • ${u.domain}</text></svg>`}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':'&quot;',"'":"&#39;"}[m]))}
+function renderUnits(){units.innerHTML='';for(const u of S.units){const el=document.createElement('div');el.className='unit'+(S.selected===u.id?' selected':'');el.style.left=u.x+'px';el.style.top=u.y+'px';el.style.width=u.w+'px';el.style.height=u.h+'px';el.style.transform=`rotate(${u.rot}deg)`;el.innerHTML=unitSvg(u);el.onpointerdown=e=>startDrag(e,u,el);el.ondblclick=e=>{e.stopPropagation();const v=prompt('Rename unit',u.label);if(v!==null){pushHistory();u.label=v.trim()||u.label;renderUnits()}};units.appendChild(el)}updateKpi()}
+function startDrag(ev,u,el){if(S.mode!=='plan'||S.tool!=='select')return;ev.stopPropagation();S.selected=u.id;$('bSel').textContent='Selected: '+u.id;renderUnits();const start=stagePt(ev),ox=u.x,oy=u.y;el.setPointerCapture(ev.pointerId);const mv=e=>{const p=stagePt(e);u.x=clamp(0,S.stage.w-u.w,ox+(p.x-start.x));u.y=clamp(0,S.stage.h-u.h,oy+(p.y-start.y));el.style.left=u.x+'px';el.style.top=u.y+'px'};const up=()=>{el.releasePointerCapture(ev.pointerId);window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up)}
+function deleteSelected(){if(!S.selected)return;pushHistory();S.units=S.units.filter(u=>u.id!==S.selected);S.selected=null;$('bSel').textContent='Selected: none';renderUnits();toast('Deleted')}
+function nudgeSelected(){const u=S.units.find(x=>x.id===S.selected);if(!u)return;pushHistory();u.x=clamp(0,S.stage.w-u.w,u.x+10);u.y=clamp(0,S.stage.h-u.h,u.y+10);renderUnits()}
+
+function snapshot(){pushHistory();S.turnNotes[S.turn]=$('turnNote').value.trim();S.snaps.push(deep({turn:S.turn,stage:S.stage,map:S.map,terrain:S.terrain,units:S.units,ids:S.ids,turnNotes:S.turnNotes}));$('turn').max=Math.max(0,S.snaps.length-1);$('turn').value=S.snaps.length-1;updateKpi();toast('Snapshot saved')}
+function loadSnap(i){const s=S.snaps[i];if(!s)return;S.turn=s.turn;S.stage=deep(s.stage);S.map=s.map;S.terrain=deep(s.terrain);S.units=deep(s.units);S.ids=deep(s.ids);S.turnNotes=deep(s.turnNotes||{});map.src=S.map||'';applySize(S.stage.w,S.stage.h);$('turnNote').value=S.turnNotes[S.turn]||'';renderAll()}
+function nextTurn(){S.turn++;$('turnNote').value=S.turnNotes[S.turn]||'';toast('Turn '+S.turn)}
+
+function exportJson(){const data={version:8,kind:'fotw-board',savedAt:new Date().toISOString(),...deep({stage:S.stage,map:S.map,paint:S.paint,terrain:S.terrain,units:S.units,snaps:S.snaps,turn:S.turn,turnNotes:S.turnNotes,ids:S.ids})};$('io').value=JSON.stringify(data,null,2);toast('Exported JSON')}
+function importJson(){try{pushHistory();const p=JSON.parse($('io').value);S.stage=p.stage||S.stage;S.map=p.map||'';S.paint={...S.paint,...(p.paint||{})};S.terrain=p.terrain||{};S.units=p.units||[];S.snaps=p.snaps||[];S.turn=p.turn||0;S.turnNotes=p.turnNotes||{};S.ids=p.ids||S.ids;map.src=S.map||'';applySize(S.stage.w,S.stage.h);$('turn').max=Math.max(0,S.snaps.length-1);$('turn').value=Math.max(0,S.snaps.length-1);$('turnNote').value=S.turnNotes[S.turn]||'';renderAll();toast('Imported JSON')}catch(e){toast('Import failed: '+e.message)}}
+
+function updateKpi(){$('kUnits').textContent=S.units.length;$('kTiles').textContent=Object.keys(S.terrain).length;$('kTurns').textContent=S.snaps.length}
+function renderAll(){drawTerrain();renderUnits();updateKpi()}
+
+input.addEventListener('pointerdown',ev=>{if(S.mode==='build'&&(S.tool==='paint'||S.tool==='erase')){pushHistory();S.paint.down=true;const p=stagePt(ev);paintAt(p.x,p.y,S.tool==='erase'?null:S.paint.type)}})
+window.addEventListener('pointermove',ev=>{if(S.paint.down&&S.mode==='build'&&(S.tool==='paint'||S.tool==='erase')){const p=stagePt(ev);paintAt(p.x,p.y,S.tool==='erase'?null:S.paint.type)}})
+window.addEventListener('pointerup',()=>S.paint.down=false)
+
+$('modeBuild').onclick=()=>setMode('build');$('modePlan').onclick=()=>setMode('plan');
+$('toolPaint').onclick=()=>setTool('paint');$('toolErase').onclick=()=>setTool('erase');$('toolSelect').onclick=()=>setTool('select');
+$('grid').onchange=e=>{S.paint.grid=parseInt(e.target.value,10);drawTerrain()};$('brush').onchange=e=>S.paint.brush=parseInt(e.target.value,10);$('terrainType').onchange=e=>S.paint.type=e.target.value;
+$('clearTerrain').onclick=()=>{pushHistory();S.terrain={};drawTerrain();updateKpi()};$('smooth').onclick=smooth;
+$('file').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;pushHistory();S.map=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)});map.src=S.map;toast('Map loaded')});
+$('clearMap').onclick=()=>{pushHistory();S.map='';map.removeAttribute('src');toast('Map cleared')};
+$('applySize').onclick=()=>{pushHistory();applySize(parseInt($('w').value,10)||1600,parseInt($('h').value,10)||900)};$('fit').onclick=fit;
+$('zoomIn').onclick=()=>setZoom(S.stage.zoom*1.1);$('zoomOut').onclick=()=>setZoom(S.stage.zoom/1.1);$('zoomReset').onclick=()=>setZoom(1);
+$('addUnit').onclick=addUnit;$('delSel').onclick=deleteSelected;$('nudge').onclick=nudgeSelected;
+$('snapshot').onclick=snapshot;$('newTurn').onclick=nextTurn;$('turn').oninput=e=>loadSnap(parseInt(e.target.value,10));$('turnNote').onchange=e=>S.turnNotes[S.turn]=e.target.value.trim();
+$('exp').onclick=exportJson;$('imp').onclick=importJson;
+window.addEventListener('keydown',e=>{const tag=document.activeElement?.tagName?.toLowerCase();if((e.key==='Delete'||e.key==='Backspace')&&!['input','textarea','select'].includes(tag))deleteSelected();if(e.ctrlKey&&e.key.toLowerCase()==='z'){e.preventDefault();undo()}if(e.ctrlKey&&e.key.toLowerCase()==='y'){e.preventDefault();redo()}});
+
+applySize(1600,900);setMode('build');setTool('paint');setZoom(1);snapshot();toast('Loaded: enhanced builder with undo/redo, KPIs, turn notes, and stable unit drag');
+</script>
+</body>
+</html>
