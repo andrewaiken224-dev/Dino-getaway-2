@@ -132,7 +132,7 @@
     transition: left 120ms ease, top 120ms ease, width 120ms ease, height 120ms ease, transform 120ms ease;
   }
   .unit:active{cursor:grabbing}
-  .unit.dragging{transition:none !important}
+  .unit.dragging{transition:none !important; will-change:left,top,width,height,transform}
   .unit.selected{outline:2px solid rgba(122,167,255,.8); outline-offset:4px; border-radius:12px;}
   .handles{position:absolute; inset:-10px; pointer-events:none;}
   .handle{
@@ -559,6 +559,9 @@ function stagePointFromClient(ev){
   const stage=$("stage");
   const rect=stage.getBoundingClientRect();
   return { x:(ev.clientX-rect.left)/state.stage.zoom, y:(ev.clientY-rect.top)/state.stage.zoom };
+}
+function stagePointFromClientCached(ev, rect, zoom){
+  return { x:(ev.clientX-rect.left)/zoom, y:(ev.clientY-rect.top)/zoom };
 }
 function dist2(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; }
 function pointInPolygon(pt, poly){
@@ -1238,21 +1241,36 @@ function renderUnits(){
 
 function startUnitDrag(ev, el, u){
   el.classList.add("dragging");
-  const start=stagePointFromClient(ev);
+  const rect=stageEl.getBoundingClientRect();
+  const zoom=state.stage.zoom;
+  const start=stagePointFromClientCached(ev, rect, zoom);
   const ox=u.x, oy=u.y;
+  let raf=0;
+  let lastEvent=null;
 
   try{ el.setPointerCapture(ev.pointerId); }catch{}
 
-  function move(e){
-    if(e.cancelable) e.preventDefault();
-    const p=stagePointFromClient(e);
-    u.x=clamp(0,state.stage.w-u.w, ox+(p.x-start.x));
-    u.y=clamp(0,state.stage.h-u.h, oy+(p.y-start.y));
+  function commitMove(e){
+    const p=stagePointFromClientCached(e, rect, zoom);
+    u.x=Math.round(clamp(0,state.stage.w-u.w, ox+(p.x-start.x)));
+    u.y=Math.round(clamp(0,state.stage.h-u.h, oy+(p.y-start.y)));
     el.style.left=u.x+"px";
     el.style.top=u.y+"px";
   }
+
+  function move(e){
+    if(e.cancelable) e.preventDefault();
+    lastEvent=e;
+    if(raf) return;
+    raf=requestAnimationFrame(()=>{
+      raf=0;
+      if(lastEvent) commitMove(lastEvent);
+    });
+  }
   function up(e){
     if(e && e.cancelable) e.preventDefault();
+    if(raf){ cancelAnimationFrame(raf); raf=0; }
+    if(lastEvent) commitMove(lastEvent);
     el.classList.remove("dragging");
     try{ el.releasePointerCapture(ev.pointerId); }catch{}
     el.removeEventListener("pointermove",move);
@@ -1274,14 +1292,17 @@ function startUnitDrag(ev, el, u){
 }
 function startUnitResize(ev, el, u, corner){
   el.classList.add("dragging");
-  const start=stagePointFromClient(ev);
+  const rect=stageEl.getBoundingClientRect();
+  const zoom=state.stage.zoom;
+  const start=stagePointFromClientCached(ev, rect, zoom);
   const ox=u.x, oy=u.y, ow=u.w, oh=u.h;
+  let raf=0;
+  let lastEvent=null;
 
   try{ el.setPointerCapture(ev.pointerId); }catch{}
 
-  function move(e){
-    if(e.cancelable) e.preventDefault();
-    const p=stagePointFromClient(e);
+  function commitMove(e){
+    const p=stagePointFromClientCached(e, rect, zoom);
     const dx=p.x-start.x, dy=p.y-start.y;
     let nx=ox, ny=oy, nw=ow, nh=oh;
 
@@ -1290,17 +1311,29 @@ function startUnitResize(ev, el, u, corner){
     if(corner==="bl"){nw=ow-dx; nh=oh+dy; nx=ox+dx;}
     if(corner==="tl"){nw=ow-dx; nh=oh-dy; nx=ox+dx; ny=oy+dy;}
 
-    nw=Math.max(110, Math.min(520, nw));
-    nh=Math.max(70,  Math.min(320, nh));
-    nx=clamp(0, state.stage.w-nw, nx);
-    ny=clamp(0, state.stage.h-nh, ny);
+    nw=Math.round(Math.max(110, Math.min(520, nw)));
+    nh=Math.round(Math.max(70,  Math.min(320, nh)));
+    nx=Math.round(clamp(0, state.stage.w-nw, nx));
+    ny=Math.round(clamp(0, state.stage.h-nh, ny));
 
     u.x=nx; u.y=ny; u.w=nw; u.h=nh;
     el.style.left=u.x+"px"; el.style.top=u.y+"px";
     el.style.width=u.w+"px"; el.style.height=u.h+"px";
   }
+
+  function move(e){
+    if(e.cancelable) e.preventDefault();
+    lastEvent=e;
+    if(raf) return;
+    raf=requestAnimationFrame(()=>{
+      raf=0;
+      if(lastEvent) commitMove(lastEvent);
+    });
+  }
   function up(e){
     if(e && e.cancelable) e.preventDefault();
+    if(raf){ cancelAnimationFrame(raf); raf=0; }
+    if(lastEvent) commitMove(lastEvent);
     el.classList.remove("dragging");
     try{ el.releasePointerCapture(ev.pointerId); }catch{}
     el.removeEventListener("pointermove",move);
@@ -1323,17 +1356,30 @@ function startUnitRotate(ev, el, u){
   el.classList.add("dragging");
   const rect=el.getBoundingClientRect();
   const center={x:rect.left+rect.width/2, y:rect.top+rect.height/2};
+  let raf=0;
+  let lastEvent=null;
 
   try{ el.setPointerCapture(ev.pointerId); }catch{}
 
+  function commitMove(e){
+    const ang=Math.atan2(e.clientY-center.y, e.clientX-center.x)*180/Math.PI;
+    u.rot=Math.round((ang+90)*10)/10;
+    el.style.transform=`rotate(${u.rot}deg)`;
+  }
+
   function move(e){
     if(e.cancelable) e.preventDefault();
-    const ang=Math.atan2(e.clientY-center.y, e.clientX-center.x)*180/Math.PI;
-    u.rot=(ang+90);
-    el.style.transform=`rotate(${u.rot}deg)`;
+    lastEvent=e;
+    if(raf) return;
+    raf=requestAnimationFrame(()=>{
+      raf=0;
+      if(lastEvent) commitMove(lastEvent);
+    });
   }
   function up(e){
     if(e && e.cancelable) e.preventDefault();
+    if(raf){ cancelAnimationFrame(raf); raf=0; }
+    if(lastEvent) commitMove(lastEvent);
     el.classList.remove("dragging");
     try{ el.releasePointerCapture(ev.pointerId); }catch{}
     el.removeEventListener("pointermove",move);
