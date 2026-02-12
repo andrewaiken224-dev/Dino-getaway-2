@@ -416,6 +416,10 @@
         <button class="btn good" id="btnAddUnit">➕ Add Unit</button>
         <button class="btn danger" id="btnDeleteSelected">🗑 Delete Selected</button>
       </div>
+      <div class="row">
+        <button class="btn secondary" id="btnDuplicateSelected">🧬 Duplicate Selected</button>
+        <button class="btn secondary" id="btnFocusSelected">🎯 Focus Selected</button>
+      </div>
 
       <div class="sep"></div>
 
@@ -597,6 +601,7 @@ const state={
   templates:{},
 };
 let terrain={};
+const AUTOSAVE_KEY="war_tracker_v71_autosave";
 
 function updateInteractionPointerEvents(){
   const needsClicks =
@@ -1093,7 +1098,7 @@ function addUnit(){
   const id=nextId(prefix,echelon);
   const label=$("unitLabel").value.trim() || tpl.name;
 
-  state.units.push({
+  const unit={
     id, typeKey, label,
     affil:$("affil").value,
     domain:$("domain").value,
@@ -1101,10 +1106,14 @@ function addUnit(){
     x: 160 + Math.random()*180,
     y: 140 + Math.random()*180,
     w:170, h:102, rot:0
-  });
+  };
+  state.units.push(unit);
+
+  if(state.tool!=="selectPlan") setTool("selectPlan");
+  select("unit", unit.id);
   renderUnits();
   recomputeAOTerritory();
-  toast("Unit added. Use Select to move.");
+  toast("Unit added and selected. Drag/resize/rotate is ready.");
 }
 
 function buildFramePath(affil){
@@ -1153,6 +1162,14 @@ function unitSvg(u){
     </svg>
   `;
 }
+
+function markUnitSelectedLive(el, id){
+  state.selected={kind:"unit",id};
+  $("selectedBadge").textContent=`Selected: unit ${id}`;
+  unitsLayer.querySelectorAll(".unit.selected").forEach(n=>n.classList.remove("selected"));
+  el.classList.add("selected");
+}
+
 function renderUnits(){
   unitsLayer.innerHTML="";
   for(const u of state.units){
@@ -1183,7 +1200,7 @@ function renderUnits(){
       if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
       ev.stopPropagation();
       ev.preventDefault();
-      select("unit", u.id);
+      markUnitSelectedLive(el, u.id);
       startUnitDrag(ev, el, u);
     });
 
@@ -1192,7 +1209,7 @@ function renderUnits(){
         if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
         ev.stopPropagation();
         ev.preventDefault();
-        select("unit", u.id);
+        markUnitSelectedLive(el, u.id);
         startUnitResize(ev, el, u,
           h.classList.contains("br")?"br":
           h.classList.contains("tr")?"tr":
@@ -1204,7 +1221,7 @@ function renderUnits(){
       if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
       ev.stopPropagation();
       ev.preventDefault();
-      select("unit", u.id);
+      markUnitSelectedLive(el, u.id);
       startUnitRotate(ev, el, u);
     });
 
@@ -1224,10 +1241,10 @@ function startUnitDrag(ev, el, u){
   const start=stagePointFromClient(ev);
   const ox=u.x, oy=u.y;
 
-  el.setPointerCapture(ev.pointerId);
+  try{ el.setPointerCapture(ev.pointerId); }catch{}
 
   function move(e){
-    e.preventDefault();
+    if(e.cancelable) e.preventDefault();
     const p=stagePointFromClient(e);
     u.x=clamp(0,state.stage.w-u.w, ox+(p.x-start.x));
     u.y=clamp(0,state.stage.h-u.h, oy+(p.y-start.y));
@@ -1235,12 +1252,15 @@ function startUnitDrag(ev, el, u){
     el.style.top=u.y+"px";
   }
   function up(e){
-    if(e) e.preventDefault();
+    if(e && e.cancelable) e.preventDefault();
     el.classList.remove("dragging");
     try{ el.releasePointerCapture(ev.pointerId); }catch{}
     el.removeEventListener("pointermove",move);
     el.removeEventListener("pointerup",up);
     el.removeEventListener("pointercancel",up);
+    window.removeEventListener("pointermove",move);
+    window.removeEventListener("pointerup",up);
+    window.removeEventListener("pointercancel",up);
     recomputeAOTerritory();
     el.classList.add("pulseOnce"); setTimeout(()=>el.classList.remove("pulseOnce"),600);
   }
@@ -1248,16 +1268,19 @@ function startUnitDrag(ev, el, u){
   el.addEventListener("pointermove",move);
   el.addEventListener("pointerup",up);
   el.addEventListener("pointercancel",up);
+  window.addEventListener("pointermove",move,{passive:false});
+  window.addEventListener("pointerup",up,{passive:false});
+  window.addEventListener("pointercancel",up,{passive:false});
 }
 function startUnitResize(ev, el, u, corner){
   el.classList.add("dragging");
   const start=stagePointFromClient(ev);
   const ox=u.x, oy=u.y, ow=u.w, oh=u.h;
 
-  el.setPointerCapture(ev.pointerId);
+  try{ el.setPointerCapture(ev.pointerId); }catch{}
 
   function move(e){
-    e.preventDefault();
+    if(e.cancelable) e.preventDefault();
     const p=stagePointFromClient(e);
     const dx=p.x-start.x, dy=p.y-start.y;
     let nx=ox, ny=oy, nw=ow, nh=oh;
@@ -1277,44 +1300,56 @@ function startUnitResize(ev, el, u, corner){
     el.style.width=u.w+"px"; el.style.height=u.h+"px";
   }
   function up(e){
-    if(e) e.preventDefault();
+    if(e && e.cancelable) e.preventDefault();
     el.classList.remove("dragging");
     try{ el.releasePointerCapture(ev.pointerId); }catch{}
     el.removeEventListener("pointermove",move);
     el.removeEventListener("pointerup",up);
     el.removeEventListener("pointercancel",up);
+    window.removeEventListener("pointermove",move);
+    window.removeEventListener("pointerup",up);
+    window.removeEventListener("pointercancel",up);
     recomputeAOTerritory();
   }
 
   el.addEventListener("pointermove",move);
   el.addEventListener("pointerup",up);
   el.addEventListener("pointercancel",up);
+  window.addEventListener("pointermove",move,{passive:false});
+  window.addEventListener("pointerup",up,{passive:false});
+  window.addEventListener("pointercancel",up,{passive:false});
 }
 function startUnitRotate(ev, el, u){
   el.classList.add("dragging");
   const rect=el.getBoundingClientRect();
   const center={x:rect.left+rect.width/2, y:rect.top+rect.height/2};
 
-  el.setPointerCapture(ev.pointerId);
+  try{ el.setPointerCapture(ev.pointerId); }catch{}
 
   function move(e){
-    e.preventDefault();
+    if(e.cancelable) e.preventDefault();
     const ang=Math.atan2(e.clientY-center.y, e.clientX-center.x)*180/Math.PI;
     u.rot=(ang+90);
     el.style.transform=`rotate(${u.rot}deg)`;
   }
   function up(e){
-    if(e) e.preventDefault();
+    if(e && e.cancelable) e.preventDefault();
     el.classList.remove("dragging");
     try{ el.releasePointerCapture(ev.pointerId); }catch{}
     el.removeEventListener("pointermove",move);
     el.removeEventListener("pointerup",up);
     el.removeEventListener("pointercancel",up);
+    window.removeEventListener("pointermove",move);
+    window.removeEventListener("pointerup",up);
+    window.removeEventListener("pointercancel",up);
   }
 
   el.addEventListener("pointermove",move);
   el.addEventListener("pointerup",up);
   el.addEventListener("pointercancel",up);
+  window.addEventListener("pointermove",move,{passive:false});
+  window.addEventListener("pointerup",up,{passive:false});
+  window.addEventListener("pointercancel",up,{passive:false});
 }
 
 function select(kind,id){
@@ -1329,6 +1364,79 @@ function clearSelection(){
   renderInfra();
   renderUnits();
 }
+
+function getSelectedUnit(){
+  if(state.selected.kind!=="unit") return null;
+  return state.units.find(u=>u.id===state.selected.id) || null;
+}
+
+function duplicateSelectedUnit(){
+  const u=getSelectedUnit();
+  if(!u){ toast("Select a unit first."); return; }
+  const cloned={...u};
+  cloned.id=nextId($("prefix").value, cloned.echelon || $("echelon").value);
+  cloned.x=clamp(0,state.stage.w-cloned.w,(cloned.x||0)+24);
+  cloned.y=clamp(0,state.stage.h-cloned.h,(cloned.y||0)+24);
+  state.units.push(cloned);
+  select("unit",cloned.id);
+  renderUnits();
+  recomputeAOTerritory();
+  toast("Unit duplicated.");
+}
+
+function focusSelected(){
+  const u=getSelectedUnit();
+  if(!u){ toast("Select a unit first."); return; }
+  const cx=(u.x+u.w/2)*state.stage.zoom;
+  const cy=(u.y+u.h/2)*state.stage.zoom;
+  mapArea.scrollLeft=Math.max(0,cx-mapArea.clientWidth/2);
+  mapArea.scrollTop=Math.max(0,cy-mapArea.clientHeight/2);
+  toast("Centered on selected unit.");
+}
+
+function saveAutosave(){
+  try{
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+      version:"7.1-autosave",
+      stage:{w:state.stage.w,h:state.stage.h},
+      mapDataUrl: state.mapDataUrl,
+      terrain,
+      infraShapes: state.infraShapes,
+      shapes: state.shapes,
+      units: state.units,
+      snapshots: state.snapshots,
+      idCounters: state.idCounters,
+      templates: state.templates,
+      turn: state.turn
+    }));
+  }catch{}
+}
+
+function loadAutosave(){
+  try{
+    const raw=localStorage.getItem(AUTOSAVE_KEY);
+    if(!raw) return false;
+    const p=JSON.parse(raw);
+    applyStageSize(p.stage?.w||1600, p.stage?.h||900);
+    state.mapDataUrl=p.mapDataUrl||"";
+    if(state.mapDataUrl) mapImgEl.src=state.mapDataUrl; else mapImgEl.removeAttribute("src");
+    terrain=p.terrain||{};
+    state.infraShapes=p.infraShapes||[];
+    state.shapes=p.shapes||[];
+    state.units=p.units||[];
+    state.snapshots=p.snapshots||[];
+    state.idCounters=p.idCounters||{};
+    state.templates=p.templates||JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+    state.turn=p.turn||0;
+    $("turnLabel").textContent=state.turn;
+    redrawTerrain(); renderInfra(); renderOverlays(); renderUnits();
+    rebuildUnitTypeDropdown($("unitSearch").value||"");
+    rebuildQuickBar();
+    recomputeAOTerritory();
+    return true;
+  }catch{return false;}
+}
+
 $("btnDeleteSelected").onclick=()=>{
   if(!state.selected.kind) return;
   const {kind,id}=state.selected;
@@ -1365,6 +1473,8 @@ window.addEventListener("keydown",(e)=>{
       }
     }
   }
+  if(e.key.toLowerCase()==="d") duplicateSelectedUnit();
+  if(e.key.toLowerCase()==="f") focusSelected();
 });
 
 $("btnFinishBuild").onclick=()=>finishTemp();
@@ -1717,6 +1827,8 @@ function loadSnapshot(idx){
 $("btnSnap").onclick=()=>{ pushSnapshot(); toast("Snapshot saved."); };
 $("btnNewTurn").onclick=()=>{ state.turn+=1; $("turnLabel").textContent=state.turn; toast(`Turn ${state.turn}`); };
 $("turnSlider").addEventListener("input",(e)=>loadSnapshot(parseInt(e.target.value,10)));
+$("btnDuplicateSelected").onclick=duplicateSelectedUnit;
+$("btnFocusSelected").onclick=focusSelected;
 
 $("btnExport").onclick=()=>{
   $("ioBox").value = JSON.stringify({
@@ -1877,14 +1989,18 @@ Keys: Esc cancel • Del delete • R rotate POI/stamp/label`);
 
 function init(){
   loadTemplates(true);
-  applyStageSize(1600,900);
-  setZoom(1);
-  setAppMode("build");
-  setTool("paint");
-  applyLayerToggles();
-  pushSnapshot("Turn 0 (Start)");
+  const restored=loadAutosave();
+  if(!restored){
+    applyStageSize(1600,900);
+    setZoom(1);
+    setAppMode("build");
+    setTool("paint");
+    applyLayerToggles();
+    pushSnapshot("Turn 0 (Start)");
+  }
   updateInteractionPointerEvents();
-  toast("v7.1 FULL loaded: map builder + war plan + drag fixed.");
+  setInterval(saveAutosave, 3000);
+  toast(restored ? "Restored autosave." : "v7.1 FULL loaded: map builder + war plan + drag fixed.");
 }
 init();
 </script>
