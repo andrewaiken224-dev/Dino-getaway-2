@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>War Tracker + Map Builder (Offline) v7.1 FULL (Drag Fixed)</title>
+<title>War Tracker + Map Builder (Offline) v7.4 (Smooth Paint + SVG Coastline + Lakes)</title>
 <style>
   :root{
     --bg:#0b0f14; --panel:#121a24; --panel2:#0f1620; --text:#e8eef7;
@@ -15,6 +15,9 @@
     --urban:#6f7a86; --desert:#9b8a52; --ice:#bfe9ff;
 
     --road:#e6e6e6; --river:#4aa0ff; --border:#ffcc66;
+
+    --coast:#e8eef7;
+    --coastHalo: rgba(0,0,0,.55);
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -25,7 +28,6 @@
     font:14px/1.25 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
   }
   .app{display:grid; grid-template-columns: 500px 1fr; height:100vh; width:100vw;}
-
   .sidebar{
     background:linear-gradient(180deg,var(--panel),var(--panel2));
     border-right:1px solid var(--line);
@@ -99,6 +101,7 @@
     font-weight:900;
   }
   .miniBtn:hover{border-color:#3e5f8a}
+
   .mapArea{position:relative; overflow:auto;
     background:radial-gradient(circle at 30% 30%, rgba(122,167,255,.08), transparent 45%),
                radial-gradient(circle at 70% 70%, rgba(255,59,59,.06), transparent 45%);
@@ -112,7 +115,11 @@
   }
 
   .mapImg{position:absolute; inset:0; z-index:1; pointer-events:none; width:100%; height:100%; object-fit:contain; border-radius:18px; background:#0a0e14;}
-  .tileCanvas{position:absolute; inset:0; z-index:2; border-radius:18px; pointer-events:none;}
+  .terrainCanvas{position:absolute; inset:0; z-index:2; border-radius:18px; pointer-events:none;}
+
+  /* Coastline layer sits above terrain, below infra. */
+  .coastSvg{position:absolute; inset:0; z-index:2.5; width:100%; height:100%; pointer-events:none;}
+
   .infraSvg{position:absolute; inset:0; z-index:3; width:100%; height:100%; pointer-events:none;}
   .overlaySvg{position:absolute; inset:0; z-index:4; width:100%; height:100%; pointer-events:none;}
   .unitsLayer{position:absolute; inset:0; z-index:5;}
@@ -168,7 +175,7 @@
   }
   .pulseOnce{ animation:pulse 520ms ease-in-out 1; }
 
-  .turnSlider{width:320px}
+  .turnSlider{width:260px}
   .layerToggles{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
   .toggle{
     display:flex; gap:8px; align-items:center; padding:6px 10px;
@@ -195,7 +202,7 @@
 <div class="app">
   <aside class="sidebar">
     <div class="topbar">
-      <div class="title">War Tracker <small>• Map Builder + SITMAP v7.1 (FULL)</small></div>
+      <div class="title">War Tracker <small>• Map Builder + SITMAP v7.4</small></div>
       <button class="btn secondary" id="btnHelp">Help</button>
     </div>
 
@@ -206,7 +213,7 @@
         <button class="btn" id="modeWarPlan">🗺️ War Plan</button>
       </div>
       <div class="hint">
-        Fixes: drag/resize/rotate stable + SVG click safe.<br/>
+        v7.4: smooth paint + <b>SVG ocean coastline</b> + <b>lake shores</b><br/>
         <span class="kbd">Esc</span> cancel • <span class="kbd">Del</span> delete selected • <span class="kbd">R</span> rotate POI/Stamp/Label
       </div>
     </div>
@@ -233,12 +240,12 @@
 
       <label>Tool</label>
       <div class="row">
-        <button class="btn" id="toolPaint">🖌 Paint Terrain</button>
+        <button class="btn" id="toolPaint">🖌 Smooth Paint</button>
         <button class="btn" id="toolErase">🧽 Erase</button>
       </div>
 
       <div class="row">
-        <button class="btn" id="toolPoly">🧩 Polygon Island</button>
+        <button class="btn" id="toolPoly">🧩 Polygon Fill</button>
         <button class="btn" id="toolLabel">🏷 Label</button>
         <button class="btn secondary" id="toolSelectBuild">🖱 Select</button>
       </div>
@@ -259,19 +266,20 @@
         <button class="btn secondary" id="btnCancelBuild">Cancel</button>
       </div>
 
-      <label>Grid + Brush</label>
+      <label>Brush</label>
       <div class="row">
-        <select id="gridSize">
-          <option value="10">10px (high detail)</option>
-          <option value="20" selected>20px (recommended)</option>
-          <option value="30">30px (fast)</option>
-          <option value="40">40px (very fast)</option>
+        <select id="brushPx">
+          <option value="10">10px (fine)</option>
+          <option value="18" selected>18px (recommended)</option>
+          <option value="28">28px</option>
+          <option value="40">40px</option>
+          <option value="60">60px (huge)</option>
         </select>
-        <select id="brushSize">
-          <option value="1">Brush 1</option>
-          <option value="2" selected>Brush 2</option>
-          <option value="3">Brush 3</option>
-          <option value="4">Brush 4</option>
+        <select id="brushHard">
+          <option value="0.20">Soft edge</option>
+          <option value="0.35" selected>Balanced</option>
+          <option value="0.55">Hard edge</option>
+          <option value="0.80">Very hard</option>
         </select>
       </div>
 
@@ -288,7 +296,50 @@
 
       <div class="row">
         <button class="btn secondary" id="btnClearTerrain">Clear Terrain</button>
-        <button class="btn secondary" id="btnSmoothCoast">🌀 Smooth Coast</button>
+        <button class="btn secondary" id="btnSmoothEdges">🌀 Smooth Edges</button>
+      </div>
+
+      <div class="sep"></div>
+
+      <h3 style="margin-top:0">SVG Coastlines (Ocean + Lakes)</h3>
+      <label>Coast accuracy (sampling)</label>
+      <select id="coastStep" class="bigSelect">
+        <option value="2">High (2px sample)</option>
+        <option value="4" selected>Balanced (4px sample)</option>
+        <option value="6">Fast (6px sample)</option>
+        <option value="8">Very Fast (8px sample)</option>
+      </select>
+      <label>Coast smoothing</label>
+      <select id="coastSmooth" class="bigSelect">
+        <option value="0">None</option>
+        <option value="1" selected>Light</option>
+        <option value="2">Medium</option>
+        <option value="3">Heavy</option>
+      </select>
+
+      <label>Ocean line width + Lake line width</label>
+      <div class="row">
+        <select id="coastWidthOcean" class="bigSelect">
+          <option value="2">Ocean Thin</option>
+          <option value="3" selected>Ocean Medium</option>
+          <option value="5">Ocean Thick</option>
+          <option value="7">Ocean Bold</option>
+        </select>
+        <select id="coastWidthLake" class="bigSelect">
+          <option value="1">Lake Hairline</option>
+          <option value="2" selected>Lake Thin</option>
+          <option value="3">Lake Medium</option>
+          <option value="4">Lake Thick</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <button class="btn good" id="btnGenCoast">🌊 Generate Ocean + Lakes</button>
+        <button class="btn secondary" id="btnClearCoast">Clear Coastlines</button>
+      </div>
+      <div class="hint">
+        Ocean = sea connected to the map edge. Lakes = enclosed sea pockets.
+        Paint Sea around your land for best results.
       </div>
 
       <div class="sep"></div>
@@ -396,8 +447,9 @@
       <div class="row">
         <select id="echelon" class="bigSelect">
           <option value="TM">TM</option><option value="SQ">SQ</option><option value="PLT">PLT</option>
-          <option value="CO">CO</option><option value="BN">BN</option><option value="BDE">BDE</option>
-          <option value="DIV" selected>DIV</option><option value="CORPS">CORPS</option><option value="ARMY">ARMY</option>
+          <option value="CO">CO</option><option value="BN">BN</option><option value="REG">REG</option>
+          <option value="BDE">BDE</option><option value="DIV" selected>DIV</option>
+          <option value="CORPS">CORPS</option><option value="ARMY">ARMY</option>
           <option value="FLEET">FLEET</option>
           <option value="CSG">CSG</option>
         </select>
@@ -482,8 +534,11 @@
         <button class="btn secondary" id="btnExportPng">Export PNG</button>
         <button class="btn secondary" id="btnNewBlank">New Blank</button>
       </div>
+      <div class="row">
+        <button class="btn danger" id="btnFactoryReset">🧨 Factory Reset</button>
+      </div>
       <textarea id="ioBox" rows="7" placeholder="Export shows here. Paste JSON here to import."></textarea>
-      <div class="hint">Export PNG captures: PNG + terrain + infra + stamps + labels + units + overlays.</div>
+      <div class="hint">Export PNG captures: PNG + terrain + ocean+lake coastlines + infra + stamps + labels + units + overlays.</div>
     </div>
   </aside>
 
@@ -503,7 +558,8 @@
       <div class="mapArea" id="mapArea">
         <div class="stage" id="stage">
           <img class="mapImg" id="mapImg" alt="Map" />
-          <canvas class="tileCanvas" id="tileCanvas"></canvas>
+          <canvas class="terrainCanvas" id="terrainCanvas"></canvas>
+          <svg class="coastSvg" id="coastSvg" viewBox="0 0 1600 900" preserveAspectRatio="none"></svg>
           <svg class="infraSvg" id="infraSvg" viewBox="0 0 1600 900" preserveAspectRatio="none"></svg>
           <svg class="overlaySvg" id="overlaySvg" viewBox="0 0 1600 900" preserveAspectRatio="none"></svg>
           <div class="unitsLayer" id="unitsLayer"></div>
@@ -516,12 +572,14 @@
         <input class="turnSlider" id="turnSlider" type="range" min="0" max="0" value="0" />
         <button class="miniBtn" id="btnSnap">💾 Snapshot</button>
         <button class="miniBtn" id="btnNewTurn">➕ Turn</button>
+        <button class="miniBtn" id="btnReplay">▶ Replay</button>
 
         <span class="spacer"></span>
 
         <div class="layerToggles">
           <label class="toggle"><input type="checkbox" id="togMapImg" checked /> PNG</label>
           <label class="toggle"><input type="checkbox" id="togTerrain" checked /> Terrain</label>
+          <label class="toggle"><input type="checkbox" id="togCoast" checked /> Coastlines</label>
           <label class="toggle"><input type="checkbox" id="togInfra" checked /> Infra/Stamps/Labels</label>
           <label class="toggle"><input type="checkbox" id="togUnits" checked /> Units</label>
           <label class="toggle"><input type="checkbox" id="togOverlays" checked /> Overlays</label>
@@ -576,8 +634,9 @@ function pointInPolygon(pt, poly){
 const stageEl=$("stage");
 const mapArea=$("mapArea");
 const mapImgEl=$("mapImg");
-const tileCanvas=$("tileCanvas");
-const ctx=tileCanvas.getContext("2d");
+const terrainCanvas=$("terrainCanvas");
+const tctx=terrainCanvas.getContext("2d");
+const coastSvg=$("coastSvg");
 const infraSvg=$("infraSvg");
 const overlaySvg=$("overlaySvg");
 const unitsLayer=$("unitsLayer");
@@ -588,7 +647,7 @@ const state={
   mapDataUrl:"",
   appMode:"build",
   tool:"paint",
-  paint:{grid:20, brush:2, type:"sea", down:false},
+
   temp:{points:[], kind:null},
   infraShapes:[],
   shapes:[],
@@ -599,10 +658,23 @@ const state={
   dragging:null,
   idCounters:{},
   templates:{},
-};
-let terrain={};
-const AUTOSAVE_KEY="war_tracker_v71_autosave";
 
+  // Coastline state (vector): ocean + lakes
+  coast:{
+    enabled:true,
+    oceanWidth:3,
+    lakeWidth:2,
+    oceanD:"",
+    lakeD:""
+  },
+
+  paint:{ down:false, pts:[] },
+  replay:{on:false,timer:null}
+};
+
+const AUTOSAVE_KEY="war_tracker_v74_autosave";
+
+/* =============== Interaction Layer Click Rules =============== */
 function updateInteractionPointerEvents(){
   const needsClicks =
     (state.appMode==="build" && state.tool!=="selectBuild") ||
@@ -610,28 +682,68 @@ function updateInteractionPointerEvents(){
   interaction.style.pointerEvents = needsClicks ? "all" : "none";
 }
 
+/* ================= Templates (unchanged) ================= */
 const DEFAULT_TEMPLATES = {
-  "inf_bn":{name:"INF BN",icon:"inf",quick:true},
-  "inf_bde":{name:"INF BDE",icon:"inf",quick:true},
-  "inf_div":{name:"INF DIV",icon:"inf",quick:true},
-  "mech_bn":{name:"MECH BN",icon:"mech",quick:true},
-  "armor_bn":{name:"TANK BN",icon:"armor",quick:true},
-  "recon_co":{name:"RECON CO",icon:"recon",quick:true},
-  "arty_bn":{name:"ARTY BN",icon:"arty",quick:true},
-  "mlrs_bn":{name:"MLRS BN",icon:"missile",quick:true},
-  "sam_bn":{name:"SAM BN",icon:"sam",quick:true},
-  "hq":{name:"HQ / CMD",icon:"hq",quick:true},
-  "fighter_sq":{name:"FTR SQ",icon:"air",quick:true},
-  "strike_sq":{name:"STRIKE SQ",icon:"air",quick:true},
-  "carrier":{name:"CARRIER",icon:"naval",quick:true},
-  "csg":{name:"CSG",icon:"naval",quick:true},
-  "destroyer":{name:"DESTROYER",icon:"naval",quick:true},
-  "sub":{name:"SUB",icon:"sub",quick:true},
-  "engineer_bn":{name:"ENG BN",icon:"engineer",quick:false},
-  "log_bn":{name:"LOG BN",icon:"log",quick:false},
-  "ew_det":{name:"EW DET",icon:"cyber",quick:false},
-  "uav_swarm":{name:"UAV SWARM",icon:"cyber",quick:false},
+  "inf_co":{name:"INF CO",icon:"inf",quick:false,group:"Land • Maneuver"},
+  "inf_bn":{name:"INF BN",icon:"inf",quick:true,group:"Land • Maneuver"},
+  "inf_reg":{name:"INF REG",icon:"inf",quick:false,group:"Land • Maneuver"},
+  "inf_bde":{name:"INF BDE",icon:"inf",quick:true,group:"Land • Maneuver"},
+  "inf_div":{name:"INF DIV",icon:"inf",quick:true,group:"Land • Maneuver"},
+  "airborne_bde":{name:"AIRBORNE BDE",icon:"inf",quick:true,group:"Land • Maneuver"},
+  "marine_bde":{name:"MARINE BDE",icon:"inf",quick:true,group:"Land • Maneuver"},
+  "mech_bn":{name:"MECH BN",icon:"mech",quick:true,group:"Land • Maneuver"},
+  "mech_bde":{name:"MECH BDE",icon:"mech",quick:false,group:"Land • Maneuver"},
+  "armor_co":{name:"TANK CO",icon:"armor",quick:false,group:"Land • Maneuver"},
+  "armor_bn":{name:"TANK BN",icon:"armor",quick:true,group:"Land • Maneuver"},
+  "armor_bde":{name:"ARMORED BDE",icon:"armor",quick:true,group:"Land • Maneuver"},
+  "armor_div":{name:"ARMORED DIV",icon:"armor",quick:false,group:"Land • Maneuver"},
+  "recon_pl":{name:"RECON PLT",icon:"recon",quick:false,group:"Land • Maneuver"},
+  "recon_co":{name:"RECON CO",icon:"recon",quick:true,group:"Land • Maneuver"},
+  "sf_det":{name:"SOF DET",icon:"recon",quick:false,group:"Land • Maneuver"},
+
+  "arty_bn":{name:"ARTY BN",icon:"arty",quick:true,group:"Land • Fires"},
+  "spg_bn":{name:"SPG BN",icon:"arty",quick:false,group:"Land • Fires"},
+  "mlrs_bn":{name:"MLRS BN",icon:"missile",quick:true,group:"Land • Fires"},
+  "mortar_bn":{name:"MORTAR BN",icon:"arty",quick:false,group:"Land • Fires"},
+  "missile_bde":{name:"MISSILE BDE",icon:"missile",quick:false,group:"Land • Fires"},
+  "sam_bn":{name:"SAM BN",icon:"sam",quick:true,group:"Land • Fires"},
+  "shorad_bn":{name:"SHORAD BN",icon:"sam",quick:false,group:"Land • Fires"},
+
+  "engineer_bn":{name:"ENG BN",icon:"engineer",quick:true,group:"Land • Support"},
+  "log_bn":{name:"LOG BN",icon:"log",quick:true,group:"Land • Support"},
+  "mp_co":{name:"MP CO",icon:"inf",quick:false,group:"Land • Support"},
+  "medical_co":{name:"MED CO",icon:"log",quick:false,group:"Land • Support"},
+  "hq":{name:"HQ / CMD",icon:"hq",quick:true,group:"Land • Support"},
+  "supply_hub":{name:"SUPPLY HUB",icon:"log",quick:false,group:"Land • Support"},
+
+  "fighter_sq":{name:"FTR SQ",icon:"air",quick:true,group:"Air"},
+  "cas_sq":{name:"CAS SQ",icon:"air",quick:true,group:"Air"},
+  "strike_sq":{name:"STRIKE SQ",icon:"air",quick:true,group:"Air"},
+  "bomber_wing":{name:"BOMBER WING",icon:"air",quick:false,group:"Air"},
+  "awacs":{name:"AWACS",icon:"air",quick:false,group:"Air"},
+  "tanker":{name:"TANKER",icon:"air",quick:false,group:"Air"},
+  "transport_wing":{name:"TRANSPORT WING",icon:"air",quick:false,group:"Air"},
+  "helo_bn":{name:"HELO BN",icon:"air",quick:false,group:"Air"},
+  "uav_swarm":{name:"UAV SWARM",icon:"cyber",quick:true,group:"Air"},
+
+  "carrier":{name:"CARRIER",icon:"naval",quick:true,group:"Naval"},
+  "csg":{name:"CSG",icon:"naval",quick:true,group:"Naval"},
+  "amphib":{name:"AMPHIB GP",icon:"naval",quick:true,group:"Naval"},
+  "destroyer":{name:"DESTROYER",icon:"naval",quick:true,group:"Naval"},
+  "frigate":{name:"FRIGATE",icon:"naval",quick:false,group:"Naval"},
+  "cruiser":{name:"CRUISER",icon:"naval",quick:false,group:"Naval"},
+  "corvette":{name:"CORVETTE",icon:"naval",quick:false,group:"Naval"},
+  "sub":{name:"SUB",icon:"sub",quick:true,group:"Naval"},
+  "ssn":{name:"SSN",icon:"sub",quick:false,group:"Naval"},
+  "ssbn":{name:"SSBN",icon:"sub",quick:false,group:"Naval"},
+  "mcm":{name:"MCM",icon:"naval",quick:false,group:"Naval"},
+
+  "ew_det":{name:"EW DET",icon:"cyber",quick:true,group:"Cyber/EW/Space"},
+  "cyber_cell":{name:"CYBER CELL",icon:"cyber",quick:false,group:"Cyber/EW/Space"},
+  "sat_ctrl":{name:"SAT CTRL",icon:"cyber",quick:false,group:"Cyber/EW/Space"},
+  "space_wing":{name:"SPACE WING",icon:"cyber",quick:false,group:"Cyber/EW/Space"},
 };
+
 function loadTemplates(defaultOnly=false){
   if(defaultOnly || !Object.keys(state.templates).length){
     state.templates=JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
@@ -642,19 +754,31 @@ function loadTemplates(defaultOnly=false){
 function rebuildUnitTypeDropdown(filter=""){
   const sel=$("unitType"); sel.innerHTML="";
   const f=filter.trim().toLowerCase();
-  const entries=Object.entries(state.templates)
-    .map(([k,v])=>({k,...v}))
-    .filter(it=>!f || it.name.toLowerCase().includes(f) || it.k.includes(f) || it.icon.includes(f))
-    .sort((a,b)=>a.name.localeCompare(b.name));
-  for(const it of entries){
-    const o=document.createElement("option");
-    o.value=it.k; o.textContent=it.name;
-    sel.appendChild(o);
+  const items=Object.entries(state.templates).map(([k,v])=>({k,...v}))
+    .filter(it=>!f || it.name.toLowerCase().includes(f) || it.k.includes(f) || (it.group||"").toLowerCase().includes(f))
+    .sort((a,b)=> (a.group||"").localeCompare(b.group||"") || a.name.localeCompare(b.name));
+  const groups=new Map();
+  for(const it of items){
+    const g=it.group || "Other";
+    if(!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(it);
+  }
+  for(const [g, arr] of groups){
+    const og=document.createElement("optgroup");
+    og.label=g;
+    for(const it of arr){
+      const o=document.createElement("option");
+      o.value=it.k;
+      o.textContent=it.name;
+      og.appendChild(o);
+    }
+    sel.appendChild(og);
   }
 }
 function rebuildQuickBar(){
   const bar=$("quickBar"); bar.innerHTML="";
-  const quick=Object.entries(state.templates).filter(([,v])=>v.quick).map(([k,v])=>({k,...v})).sort((a,b)=>a.name.localeCompare(b.name));
+  const quick=Object.entries(state.templates).filter(([,v])=>v.quick).map(([k,v])=>({k,...v}))
+    .sort((a,b)=>a.name.localeCompare(b.name));
   for(const q of quick){
     const pill=document.createElement("div");
     pill.className="pill";
@@ -665,6 +789,7 @@ function rebuildQuickBar(){
 }
 $("unitSearch").addEventListener("input",(e)=>rebuildUnitTypeDropdown(e.target.value));
 
+/* ================= Zoom ================= */
 function setZoom(z){
   state.stage.zoom=clamp(0.25,3,z);
   stageEl.style.transform=`scale(${state.stage.zoom})`;
@@ -682,14 +807,21 @@ function fitStage(){
 }
 $("btnFitStage").onclick=fitStage;
 
+/* ================= Stage Size ================= */
 function applyStageSize(w,h){
   state.stage.w=w; state.stage.h=h;
   stageEl.style.width=w+"px";
   stageEl.style.height=h+"px";
-  tileCanvas.width=w; tileCanvas.height=h;
+
+  terrainCanvas.width=w; terrainCanvas.height=h;
+  tctx.imageSmoothingEnabled=true;
+
+  coastSvg.setAttribute("viewBox",`0 0 ${w} ${h}`);
   infraSvg.setAttribute("viewBox",`0 0 ${w} ${h}`);
   overlaySvg.setAttribute("viewBox",`0 0 ${w} ${h}`);
-  redrawTerrain();
+  const orderSvg=$("orderSvg"); if(orderSvg) orderSvg.setAttribute("viewBox",`0 0 ${w} ${h}`);
+
+  renderCoast();
   renderInfra();
   renderOverlays();
   renderUnits();
@@ -701,6 +833,7 @@ $("btnResizeStage").onclick=()=>{
   applyStageSize(w,h);
 };
 
+/* ================= Mode / Tool ================= */
 function setAppMode(m){
   state.appMode=m;
   $("modeBadge").textContent = "Mode: " + (m==="build"?"Build Map":"War Plan");
@@ -718,12 +851,14 @@ function setTool(t){
   $("toolBadge").textContent="Tool: " + toolLabel(t);
   state.temp.points=[];
   state.temp.kind=null;
+  state.paint.down=false;
+  state.paint.pts=[];
   updateInteractionPointerEvents();
 }
 function toolLabel(t){
   const map={
-    paint:"Paint", erase:"Erase",
-    poly:"Polygon Island", label:"Label",
+    paint:"Smooth Paint", erase:"Erase",
+    poly:"Polygon Fill", label:"Label",
     road:"Road", river:"River", border:"Border",
     city:"City/POI", stamp:"Stamp",
     selectBuild:"Select (Build)",
@@ -732,7 +867,6 @@ function toolLabel(t){
   };
   return map[t]||t;
 }
-
 $("toolPaint").onclick=()=>setTool("paint");
 $("toolErase").onclick=()=>setTool("erase");
 $("toolPoly").onclick=()=>setTool("poly");
@@ -749,6 +883,7 @@ $("toolFront").onclick=()=>setTool("front");
 $("toolZone").onclick=()=>setTool("zone");
 $("toolNote").onclick=()=>setTool("note");
 
+/* ================= Map Image ================= */
 function fileToDataURL(file){
   return new Promise((res,rej)=>{
     const r=new FileReader();
@@ -769,95 +904,396 @@ $("btnClearMap").onclick=()=>{
   toast("Map image cleared.");
 };
 
-function gridKey(gx,gy){ return gx+"_"+gy; }
-$("gridSize").onchange=(e)=>{ state.paint.grid=parseInt(e.target.value,10); redrawTerrain(); };
-$("brushSize").onchange=(e)=>{ state.paint.brush=parseInt(e.target.value,10); };
-$("terrainType").onchange=(e)=>{ state.paint.type=e.target.value; };
-
-function redrawTerrain(){
-  ctx.clearRect(0,0,tileCanvas.width,tileCanvas.height);
-  const gs=state.paint.grid;
-  for(const [k,type] of Object.entries(terrain)){
-    const [gx,gy]=k.split("_").map(Number);
-    const x=gx*gs, y=gy*gs;
-    ctx.fillStyle=terrainColor(type);
-    ctx.globalAlpha=0.65;
-    ctx.fillRect(x,y,gs,gs);
-  }
-  ctx.globalAlpha=1;
+/* ================= Smooth Terrain Paint System ================= */
+function clearTerrain(){
+  tctx.clearRect(0,0,terrainCanvas.width,terrainCanvas.height);
 }
-function paintAt(x,y,type){
-  const gs=state.paint.grid, b=state.paint.brush;
-  const gx=Math.floor(x/gs), gy=Math.floor(y/gs);
-  for(let dy=-b+1;dy<=b-1;dy++){
-    for(let dx=-b+1;dx<=b-1;dx++){
-      const nx=gx+dx, ny=gy+dy;
-      if(nx<0||ny<0||nx*gs>=state.stage.w||ny*gs>=state.stage.h) continue;
-      const k=gridKey(nx,ny);
-      if(type===null) delete terrain[k];
-      else terrain[k]=type;
+$("btnClearTerrain").onclick=()=>{ clearTerrain(); toast("Terrain cleared."); };
+
+function brushSettings(){
+  const r=parseFloat($("brushPx").value)||18;
+  const hard=parseFloat($("brushHard").value)||0.35;
+  return {r, hard};
+}
+function drawBrushDot(x,y,type,erase=false){
+  const {r, hard}=brushSettings();
+  tctx.save();
+  tctx.globalCompositeOperation = erase ? "destination-out" : "source-over";
+
+  const grad=tctx.createRadialGradient(x,y,r*hard, x,y,r);
+  const col = erase ? "rgba(0,0,0,1)" : terrainColor(type);
+  grad.addColorStop(0, col);
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+
+  tctx.fillStyle=grad;
+  tctx.beginPath();
+  tctx.arc(x,y,r,0,Math.PI*2);
+  tctx.fill();
+  tctx.restore();
+}
+function drawBrushStroke(points,type,erase=false){
+  if(points.length===1){
+    drawBrushDot(points[0].x, points[0].y, type, erase);
+    return;
+  }
+  const {r, hard}=brushSettings();
+  tctx.save();
+  tctx.globalCompositeOperation = erase ? "destination-out" : "source-over";
+  tctx.lineCap="round";
+  tctx.lineJoin="round";
+  tctx.lineWidth = r*2;
+  tctx.strokeStyle = erase ? "rgba(0,0,0,1)" : terrainColor(type);
+  tctx.globalAlpha = erase ? 1 : 0.70;
+
+  tctx.beginPath();
+  tctx.moveTo(points[0].x, points[0].y);
+  for(let i=1;i<points.length-1;i++){
+    const mx=(points[i].x+points[i+1].x)/2;
+    const my=(points[i].y+points[i+1].y)/2;
+    tctx.quadraticCurveTo(points[i].x,points[i].y,mx,my);
+  }
+  tctx.lineTo(points[points.length-1].x, points[points.length-1].y);
+  tctx.stroke();
+
+  if(!erase){
+    tctx.globalAlpha = 0.85;
+    tctx.lineWidth = r*2*hard;
+    tctx.stroke();
+  }
+  tctx.restore();
+}
+
+let lastPaintPoint=null;
+function paintMove(p, type, erase=false){
+  if(!lastPaintPoint){ lastPaintPoint=p; state.paint.pts=[p]; return; }
+  const dx=p.x-lastPaintPoint.x, dy=p.y-lastPaintPoint.y;
+  const d=Math.sqrt(dx*dx+dy*dy);
+  const step=Math.max(6, (brushSettings().r*0.35));
+  if(d>step){
+    const n=Math.floor(d/step);
+    for(let i=1;i<=n;i++){
+      const t=i/n;
+      state.paint.pts.push({x:lastPaintPoint.x+dx*t, y:lastPaintPoint.y+dy*t});
     }
+  }else{
+    state.paint.pts.push(p);
   }
-  redrawTerrain();
+  lastPaintPoint=p;
+  drawBrushStroke(state.paint.pts.slice(-6), type, erase);
 }
-$("btnClearTerrain").onclick=()=>{ terrain={}; redrawTerrain(); toast("Terrain cleared."); };
 
-function smoothCoast(passes=2){
-  const gs=state.paint.grid;
-  const maxX=Math.floor(state.stage.w/gs), maxY=Math.floor(state.stage.h/gs);
-  const isLand=(t)=>t && t!=="sea";
-  const isSea=(t)=>t==="sea";
-  const get=(x,y)=>terrain[gridKey(x,y)]||null;
+$("btnSmoothEdges").onclick=()=>{
+  const W=terrainCanvas.width, H=terrainCanvas.height;
+  const tmp=document.createElement("canvas");
+  tmp.width=W; tmp.height=H;
+  const c=tmp.getContext("2d");
+  c.imageSmoothingEnabled=true;
 
-  for(let p=0;p<passes;p++){
-    const next={...terrain};
-    for(let y=0;y<maxY;y++){
-      for(let x=0;x<maxX;x++){
-        const k=gridKey(x,y);
-        const cur=get(x,y);
-        if(!cur) continue;
+  c.filter="blur(2px)";
+  c.drawImage(terrainCanvas,0,0);
+  c.filter="none";
 
-        let landN=0, seaN=0;
-        for(let dy=-1;dy<=1;dy++){
-          for(let dx=-1;dx<=1;dx++){
-            if(dx===0 && dy===0) continue;
-            const n=get(x+dx,y+dy);
-            if(!n) continue;
-            if(isSea(n)) seaN++; else if(isLand(n)) landN++;
-          }
-        }
-        if(isSea(cur) && landN>=5) next[k]="land";
-        if(isLand(cur) && seaN>=6) next[k]="sea";
+  tctx.save();
+  tctx.globalAlpha=0.45;
+  tctx.drawImage(tmp,0,0);
+  tctx.restore();
+  toast("Edges smoothed.");
+};
+
+/* ================= Coastline Generation (Ocean + Lakes) ================= */
+function rgbFromCss(hex){
+  const h=hex.trim();
+  const m=h.match(/^#([0-9a-f]{6})$/i);
+  if(!m) return {r:0,g:0,b:0};
+  const n=parseInt(m[1],16);
+  return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+}
+function isSeaPixel(r,g,b,a, seaRgb){
+  if(a < 20) return false; // empty counts as not sea
+  const dr=r-seaRgb.r, dg=g-seaRgb.g, db=b-seaRgb.b;
+  const dist=Math.sqrt(dr*dr+dg*dg+db*db);
+  return dist < 28; // tolerance for blended edges
+}
+
+/* Marching squares helper: build segments on a "mask" boundary
+   maskA = 1 where (ocean OR lake), maskB = 0 non-water
+   We run marching squares on a boolean field where 1 = water.
+*/
+function marchingSquaresSegments(field, gw, gh, step){
+  const segs=[];
+  const interp=(x0,y0,x1,y1)=>({x:(x0+x1)/2, y:(y0+y1)/2}); // midpoint interpolation
+
+  for(let y=0;y<gh;y++){
+    for(let x=0;x<gw;x++){
+      const a=field[y*(gw+1)+x];
+      const b=field[y*(gw+1)+x+1];
+      const d=field[(y+1)*(gw+1)+x];
+      const c=field[(y+1)*(gw+1)+x+1];
+      const code=(a<<3)|(b<<2)|(c<<1)|d;
+      if(code===0 || code===15) continue;
+
+      const x0=x*step, y0=y*step, x1=(x+1)*step, y1=(y+1)*step;
+      const top=interp(x0,y0,x1,y0);
+      const right=interp(x1,y0,x1,y1);
+      const bottom=interp(x0,y1,x1,y1);
+      const left=interp(x0,y0,x0,y1);
+
+      switch(code){
+        case 1:  segs.push([left,bottom]); break;
+        case 2:  segs.push([bottom,right]); break;
+        case 3:  segs.push([left,right]); break;
+        case 4:  segs.push([top,right]); break;
+        case 5:  segs.push([top,left]); segs.push([bottom,right]); break;
+        case 6:  segs.push([top,bottom]); break;
+        case 7:  segs.push([top,left]); break;
+        case 8:  segs.push([top,left]); break;
+        case 9:  segs.push([top,bottom]); break;
+        case 10: segs.push([top,right]); segs.push([bottom,left]); break;
+        case 11: segs.push([top,right]); break;
+        case 12: segs.push([left,right]); break;
+        case 13: segs.push([bottom,right]); break;
+        case 14: segs.push([left,bottom]); break;
       }
     }
-    terrain=next;
   }
-  redrawTerrain();
-  toast(`Coast smoothed (${passes} passes).`);
+  return segs;
 }
-$("btnSmoothCoast").onclick=()=>smoothCoast(2);
 
-function fillPolygonToTerrain(poly, type){
-  const gs=state.paint.grid;
-  const minX=Math.max(0, Math.floor(Math.min(...poly.map(p=>p.x))/gs));
-  const maxX=Math.min(Math.floor(state.stage.w/gs)-1, Math.floor(Math.max(...poly.map(p=>p.x))/gs));
-  const minY=Math.max(0, Math.floor(Math.min(...poly.map(p=>p.y))/gs));
-  const maxY=Math.min(Math.floor(state.stage.h/gs)-1, Math.floor(Math.max(...poly.map(p=>p.y))/gs));
+function stitchSegmentsToPath(segs, smoothIters){
+  if(!segs.length) return "";
 
-  for(let gy=minY; gy<=maxY; gy++){
-    for(let gx=minX; gx<=maxX; gx++){
-      const cx=gx*gs + gs/2;
-      const cy=gy*gs + gs/2;
-      if(pointInPolygon({x:cx,y:cy}, poly)){
-        const k=gridKey(gx,gy);
-        if(type===null) delete terrain[k];
-        else terrain[k]=type;
+  const key=(p)=>`${Math.round(p.x)}_${Math.round(p.y)}`;
+  const adj=new Map();
+
+  for(const [p,q] of segs){
+    const k1=key(p), k2=key(q);
+    if(!adj.has(k1)) adj.set(k1, []);
+    if(!adj.has(k2)) adj.set(k2, []);
+    adj.get(k1).push(q);
+    adj.get(k2).push(p);
+  }
+
+  function popNext(currKey, prevKey){
+    const list=adj.get(currKey);
+    while(list && list.length){
+      const nxt=list.pop();
+      const nk=key(nxt);
+      if(nk!==prevKey) return nxt;
+    }
+    return null;
+  }
+
+  const used=new Set();
+  const polylines=[];
+
+  for(const [p,q] of segs){
+    const pk=key(p), qk=key(q);
+    const sk=pk+"->"+qk, sk2=qk+"->"+pk;
+    if(used.has(sk)||used.has(sk2)) continue;
+
+    const line=[p,q];
+    used.add(sk);
+
+    let prev=pk, curr=qk;
+    while(true){
+      const nxt=popNext(curr, prev);
+      if(!nxt) break;
+      const nk=key(nxt);
+      const mk=curr+"->"+nk, mk2=nk+"->"+curr;
+      if(used.has(mk)||used.has(mk2)) break;
+      line.push(nxt);
+      used.add(mk);
+      prev=curr; curr=nk;
+      if(line.length>20000) break;
+    }
+
+    prev=qk; curr=pk;
+    while(true){
+      const nxt=popNext(curr, prev);
+      if(!nxt) break;
+      const nk=key(nxt);
+      const mk=curr+"->"+nk, mk2=nk+"->"+curr;
+      if(used.has(mk)||used.has(mk2)) break;
+      line.unshift(nxt);
+      used.add(mk);
+      prev=curr; curr=nk;
+      if(line.length>20000) break;
+    }
+
+    if(line.length>=6) polylines.push(line);
+  }
+
+  function chaikin(points, iters){
+    let pts=points;
+    for(let k=0;k<iters;k++){
+      const out=[];
+      out.push(pts[0]);
+      for(let i=0;i<pts.length-1;i++){
+        const p=pts[i], q=pts[i+1];
+        const Q={x:0.75*p.x+0.25*q.x, y:0.75*p.y+0.25*q.y};
+        const R={x:0.25*p.x+0.75*q.x, y:0.25*p.y+0.75*q.y};
+        out.push(Q,R);
       }
+      out.push(pts[pts.length-1]);
+      pts=out;
+    }
+    return pts;
+  }
+
+  let d="";
+  for(const line of polylines){
+    const pts = smoothIters ? chaikin(line, smoothIters) : line;
+    if(pts.length<10) continue;
+    d += `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)} `;
+    for(let i=1;i<pts.length;i++){
+      d += `L ${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)} `;
     }
   }
-  redrawTerrain();
+  return d.trim();
 }
 
+/* Flood-fill ocean classification on coarse grid:
+   seaField = 1 where sea; oceanField = sea connected to edge; lakeField = sea not ocean
+*/
+function generateOceanAndLakes(){
+  const step=parseInt($("coastStep").value,10)||4;
+  const smooth=parseInt($("coastSmooth").value,10)||1;
+  const oceanWidth=parseInt($("coastWidthOcean").value,10)||3;
+  const lakeWidth=parseInt($("coastWidthLake").value,10)||2;
+
+  const W=terrainCanvas.width, H=terrainCanvas.height;
+  const img=tctx.getImageData(0,0,W,H).data;
+  const seaRgb=rgbFromCss(terrainColor("sea"));
+
+  const gw=Math.floor(W/step), gh=Math.floor(H/step);
+  const seaField=new Uint8Array((gw+1)*(gh+1));
+
+  for(let y=0;y<=gh;y++){
+    for(let x=0;x<=gw;x++){
+      const px=Math.min(W-1, x*step);
+      const py=Math.min(H-1, y*step);
+      const i=(py*W+px)*4;
+      seaField[y*(gw+1)+x]=isSeaPixel(img[i],img[i+1],img[i+2],img[i+3],seaRgb)?1:0;
+    }
+  }
+
+  // Ocean flood fill: start from edges where seaField=1
+  const oceanField=new Uint8Array(seaField.length);
+  const qx=new Int32Array(seaField.length);
+  const qy=new Int32Array(seaField.length);
+  let qh=0, qt=0;
+
+  function push(x,y){
+    const idx=y*(gw+1)+x;
+    oceanField[idx]=1;
+    qx[qt]=x; qy[qt]=y; qt++;
+  }
+  function inBounds(x,y){ return x>=0 && y>=0 && x<=gw && y<=gh; }
+
+  // Seed edges
+  for(let x=0;x<=gw;x++){
+    if(seaField[0*(gw+1)+x] && !oceanField[0*(gw+1)+x]) push(x,0);
+    if(seaField[gh*(gw+1)+x] && !oceanField[gh*(gw+1)+x]) push(x,gh);
+  }
+  for(let y=0;y<=gh;y++){
+    if(seaField[y*(gw+1)+0] && !oceanField[y*(gw+1)+0]) push(0,y);
+    if(seaField[y*(gw+1)+gw] && !oceanField[y*(gw+1)+gw]) push(gw,y);
+  }
+
+  // BFS
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  while(qh<qt){
+    const x=qx[qh], y=qy[qh]; qh++;
+    for(const [dx,dy] of dirs){
+      const nx=x+dx, ny=y+dy;
+      if(!inBounds(nx,ny)) continue;
+      const idx=ny*(gw+1)+nx;
+      if(!seaField[idx]) continue;
+      if(oceanField[idx]) continue;
+      push(nx,ny);
+    }
+  }
+
+  // Lakes = sea minus ocean
+  const lakeField=new Uint8Array(seaField.length);
+  let seaCount=0, oceanCount=0, lakeCount=0;
+  for(let i=0;i<seaField.length;i++){
+    if(seaField[i]) seaCount++;
+    if(oceanField[i]) oceanCount++;
+    if(seaField[i] && !oceanField[i]){ lakeField[i]=1; lakeCount++; }
+  }
+
+  if(!seaCount){
+    state.coast.oceanD=""; state.coast.lakeD="";
+    state.coast.oceanWidth=oceanWidth; state.coast.lakeWidth=lakeWidth;
+    renderCoast();
+    toast("No Sea detected. Paint Sea first.");
+    return;
+  }
+
+  const iters = smooth===0 ? 0 : smooth===1 ? 1 : smooth===2 ? 2 : 3;
+
+  // Marching squares boundaries
+  const oceanSegs = marchingSquaresSegments(oceanField, gw, gh, step);
+  const lakeSegs  = marchingSquaresSegments(lakeField,  gw, gh, step);
+
+  const oceanD = stitchSegmentsToPath(oceanSegs, iters);
+  const lakeD  = stitchSegmentsToPath(lakeSegs,  iters);
+
+  state.coast.oceanD=oceanD;
+  state.coast.lakeD=lakeD;
+  state.coast.oceanWidth=oceanWidth;
+  state.coast.lakeWidth=lakeWidth;
+
+  renderCoast();
+  toast(`Coastlines generated: Ocean ${oceanD? "OK":"none"} • Lakes ${lakeD? "OK":"none"}`);
+}
+
+function renderCoast(){
+  coastSvg.replaceChildren();
+
+  const haloColor=getCss("--coastHalo");
+  const lineColor=getCss("--coast");
+
+  function addPath(d, width, opacity=0.95){
+    if(!d) return;
+
+    const halo=document.createElementNS("http://www.w3.org/2000/svg","path");
+    halo.setAttribute("d", d);
+    halo.setAttribute("fill","none");
+    halo.setAttribute("stroke", haloColor);
+    halo.setAttribute("stroke-width", String(width + 3));
+    halo.setAttribute("stroke-linecap","round");
+    halo.setAttribute("stroke-linejoin","round");
+    halo.setAttribute("opacity","0.85");
+
+    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill","none");
+    path.setAttribute("stroke", lineColor);
+    path.setAttribute("stroke-width", String(width));
+    path.setAttribute("stroke-linecap","round");
+    path.setAttribute("stroke-linejoin","round");
+    path.setAttribute("opacity", String(opacity));
+
+    coastSvg.appendChild(halo);
+    coastSvg.appendChild(path);
+  }
+
+  // Render order: lakes first (thin), then ocean (thick) on top
+  addPath(state.coast.lakeD,  state.coast.lakeWidth, 0.90);
+  addPath(state.coast.oceanD, state.coast.oceanWidth, 0.97);
+
+  applyLayerToggles();
+}
+$("btnGenCoast").onclick=()=>generateOceanAndLakes();
+$("btnClearCoast").onclick=()=>{
+  state.coast.oceanD=""; state.coast.lakeD="";
+  renderCoast();
+  toast("Coastlines cleared.");
+};
+
+/* ================= Infra SVG Rendering ================= */
 function renderInfra(){
   infraSvg.replaceChildren();
   for(const s of state.infraShapes){
@@ -1007,6 +1443,7 @@ function labelToSvg(s){
   return g;
 }
 
+/* ================= Overlays (unchanged) ================= */
 function ensureOverlayDefs(){
   let defs=overlaySvg.querySelector("defs");
   if(!defs){
@@ -1081,40 +1518,13 @@ function renderOverlays(){
   applyLayerToggles();
 }
 
+/* ================= Units (unchanged) ================= */
 function nextId(prefix,echelon){
   const key=`${prefix}_${echelon}`;
   state.idCounters[key]=(state.idCounters[key]||0)+1;
   return `${prefix}-${state.idCounters[key]}${echelon}`;
 }
 $("btnAddUnit").onclick=()=>addUnit();
-
-function addUnit(){
-  if(state.appMode!=="plan"){ toast("Switch to War Plan mode to place units."); return; }
-  const typeKey=$("unitType").value;
-  const tpl=state.templates[typeKey]; if(!tpl) return;
-
-  const echelon=$("echelon").value;
-  const prefix=$("prefix").value;
-  const id=nextId(prefix,echelon);
-  const label=$("unitLabel").value.trim() || tpl.name;
-
-  const unit={
-    id, typeKey, label,
-    affil:$("affil").value,
-    domain:$("domain").value,
-    echelon,
-    x: 160 + Math.random()*180,
-    y: 140 + Math.random()*180,
-    w:170, h:102, rot:0
-  };
-  state.units.push(unit);
-
-  if(state.tool!=="selectPlan") setTool("selectPlan");
-  select("unit", unit.id);
-  renderUnits();
-  recomputeAOTerritory();
-  toast("Unit added and selected. Drag/resize/rotate is ready.");
-}
 
 function buildFramePath(affil){
   if(affil==="hostile") return `M100 10 L185 60 L100 110 L15 60 Z`;
@@ -1162,14 +1572,34 @@ function unitSvg(u){
     </svg>
   `;
 }
+function addUnit(){
+  if(state.appMode!=="plan"){ toast("Switch to War Plan mode to place units."); return; }
+  const typeKey=$("unitType").value;
+  const tpl=state.templates[typeKey]; if(!tpl) return;
 
-function markUnitSelectedLive(el, id){
-  state.selected={kind:"unit",id};
-  $("selectedBadge").textContent=`Selected: unit ${id}`;
-  unitsLayer.querySelectorAll(".unit.selected").forEach(n=>n.classList.remove("selected"));
-  el.classList.add("selected");
+  const echelon=$("echelon").value;
+  const prefix=$("prefix").value;
+  const id=nextId(prefix,echelon);
+  const label=$("unitLabel").value.trim() || tpl.name;
+
+  const unit={
+    id, typeKey, label,
+    affil:$("affil").value,
+    domain:$("domain").value,
+    echelon,
+    x: 160 + Math.random()*180,
+    y: 140 + Math.random()*180,
+    w:170, h:102, rot:0,
+    readiness:"full", supply:"well", morale:75, health:100, combatPower:50, modifier:"none", orders:[], parentId:null
+  };
+  state.units.push(unit);
+
+  if(state.tool!=="selectPlan") setTool("selectPlan");
+  select("unit", unit.id);
+  renderUnits();
+  recomputeAOTerritory();
+  toast("Unit added and selected. Drag/resize/rotate is ready.");
 }
-
 function renderUnits(){
   unitsLayer.innerHTML="";
   for(const u of state.units){
@@ -1184,7 +1614,14 @@ function renderUnits(){
 
     const meta=document.createElement("div");
     meta.className="unitMeta";
-    meta.innerHTML=`<div class="id">${escapeHtml(u.id)}</div><div class="echelon">${escapeHtml(u.echelon)}</div>`;
+    const hp=Math.max(0,Math.min(100,u.health??100));
+    const fogOn=window.__fogOn===true;
+    const hidden=fogOn && u.affil==="hostile" && !u.revealed;
+    meta.innerHTML=`<div class="id">${hidden?"UNKNOWN":escapeHtml(u.id)}</div><div class="echelon">${escapeHtml(u.echelon)}</div>`;
+    const hpBar=document.createElement("div");
+    hpBar.style.cssText="position:absolute;left:10px;right:10px;bottom:-4px;height:4px;background:rgba(0,0,0,.4);border-radius:999px";
+    hpBar.innerHTML=`<div style="height:100%;width:${hp}%;background:${hp>60?"#45d37a":hp>30?"#ffd24a":"#ff6b6b"};border-radius:999px"></div>`;
+    el.appendChild(hpBar);
     el.appendChild(meta);
 
     const handles=document.createElement("div");
@@ -1198,18 +1635,16 @@ function renderUnits(){
 
     el.addEventListener("pointerdown",(ev)=>{
       if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
-      ev.stopPropagation();
-      ev.preventDefault();
-      markUnitSelectedLive(el, u.id);
+      ev.stopPropagation(); ev.preventDefault();
+      markUnitSelectedLive(u.id, el);
       startUnitDrag(ev, el, u);
     });
 
     handles.querySelectorAll(".handle").forEach(h=>{
       h.addEventListener("pointerdown",(ev)=>{
         if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
-        ev.stopPropagation();
-        ev.preventDefault();
-        markUnitSelectedLive(el, u.id);
+        ev.stopPropagation(); ev.preventDefault();
+        markUnitSelectedLive(u.id, el);
         startUnitResize(ev, el, u,
           h.classList.contains("br")?"br":
           h.classList.contains("tr")?"tr":
@@ -1219,9 +1654,8 @@ function renderUnits(){
     });
     handles.querySelector(".rotHandle").addEventListener("pointerdown",(ev)=>{
       if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
-      ev.stopPropagation();
-      ev.preventDefault();
-      markUnitSelectedLive(el, u.id);
+      ev.stopPropagation(); ev.preventDefault();
+      markUnitSelectedLive(u.id, el);
       startUnitRotate(ev, el, u);
     });
 
@@ -1235,14 +1669,17 @@ function renderUnits(){
   }
   applyLayerToggles();
 }
-
+function markUnitSelectedLive(unitId, el){
+  state.selected={kind:"unit",id:unitId};
+  $("selectedBadge").textContent=`Selected: unit ${unitId}`;
+  unitsLayer.querySelectorAll('.unit.selected').forEach((n)=>n.classList.remove('selected'));
+  if(el) el.classList.add('selected');
+}
 function startUnitDrag(ev, el, u){
   el.classList.add("dragging");
   const start=stagePointFromClient(ev);
   const ox=u.x, oy=u.y;
-
   try{ el.setPointerCapture(ev.pointerId); }catch{}
-
   function move(e){
     if(e.cancelable) e.preventDefault();
     const p=stagePointFromClient(e);
@@ -1262,9 +1699,7 @@ function startUnitDrag(ev, el, u){
     window.removeEventListener("pointerup",up);
     window.removeEventListener("pointercancel",up);
     recomputeAOTerritory();
-    el.classList.add("pulseOnce"); setTimeout(()=>el.classList.remove("pulseOnce"),600);
   }
-
   el.addEventListener("pointermove",move);
   el.addEventListener("pointerup",up);
   el.addEventListener("pointercancel",up);
@@ -1276,25 +1711,20 @@ function startUnitResize(ev, el, u, corner){
   el.classList.add("dragging");
   const start=stagePointFromClient(ev);
   const ox=u.x, oy=u.y, ow=u.w, oh=u.h;
-
   try{ el.setPointerCapture(ev.pointerId); }catch{}
-
   function move(e){
     if(e.cancelable) e.preventDefault();
     const p=stagePointFromClient(e);
     const dx=p.x-start.x, dy=p.y-start.y;
     let nx=ox, ny=oy, nw=ow, nh=oh;
-
     if(corner==="br"){nw=ow+dx; nh=oh+dy;}
     if(corner==="tr"){nw=ow+dx; nh=oh-dy; ny=oy+dy;}
     if(corner==="bl"){nw=ow-dx; nh=oh+dy; nx=ox+dx;}
     if(corner==="tl"){nw=ow-dx; nh=oh-dy; nx=ox+dx; ny=oy+dy;}
-
     nw=Math.max(110, Math.min(520, nw));
     nh=Math.max(70,  Math.min(320, nh));
     nx=clamp(0, state.stage.w-nw, nx);
     ny=clamp(0, state.stage.h-nh, ny);
-
     u.x=nx; u.y=ny; u.w=nw; u.h=nh;
     el.style.left=u.x+"px"; el.style.top=u.y+"px";
     el.style.width=u.w+"px"; el.style.height=u.h+"px";
@@ -1311,7 +1741,6 @@ function startUnitResize(ev, el, u, corner){
     window.removeEventListener("pointercancel",up);
     recomputeAOTerritory();
   }
-
   el.addEventListener("pointermove",move);
   el.addEventListener("pointerup",up);
   el.addEventListener("pointercancel",up);
@@ -1323,9 +1752,7 @@ function startUnitRotate(ev, el, u){
   el.classList.add("dragging");
   const rect=el.getBoundingClientRect();
   const center={x:rect.left+rect.width/2, y:rect.top+rect.height/2};
-
   try{ el.setPointerCapture(ev.pointerId); }catch{}
-
   function move(e){
     if(e.cancelable) e.preventDefault();
     const ang=Math.atan2(e.clientY-center.y, e.clientX-center.x)*180/Math.PI;
@@ -1343,7 +1770,6 @@ function startUnitRotate(ev, el, u){
     window.removeEventListener("pointerup",up);
     window.removeEventListener("pointercancel",up);
   }
-
   el.addEventListener("pointermove",move);
   el.addEventListener("pointerup",up);
   el.addEventListener("pointercancel",up);
@@ -1352,6 +1778,7 @@ function startUnitRotate(ev, el, u){
   window.addEventListener("pointercancel",up,{passive:false});
 }
 
+/* ================= Selection / Delete ================= */
 function select(kind,id){
   state.selected={kind,id};
   $("selectedBadge").textContent=`Selected: ${kind} ${id}`;
@@ -1364,12 +1791,10 @@ function clearSelection(){
   renderInfra();
   renderUnits();
 }
-
 function getSelectedUnit(){
   if(state.selected.kind!=="unit") return null;
   return state.units.find(u=>u.id===state.selected.id) || null;
 }
-
 function duplicateSelectedUnit(){
   const u=getSelectedUnit();
   if(!u){ toast("Select a unit first."); return; }
@@ -1383,7 +1808,6 @@ function duplicateSelectedUnit(){
   recomputeAOTerritory();
   toast("Unit duplicated.");
 }
-
 function focusSelected(){
   const u=getSelectedUnit();
   if(!u){ toast("Select a unit first."); return; }
@@ -1393,54 +1817,12 @@ function focusSelected(){
   mapArea.scrollTop=Math.max(0,cy-mapArea.clientHeight/2);
   toast("Centered on selected unit.");
 }
-
-function saveAutosave(){
-  try{
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-      version:"7.1-autosave",
-      stage:{w:state.stage.w,h:state.stage.h},
-      mapDataUrl: state.mapDataUrl,
-      terrain,
-      infraShapes: state.infraShapes,
-      shapes: state.shapes,
-      units: state.units,
-      snapshots: state.snapshots,
-      idCounters: state.idCounters,
-      templates: state.templates,
-      turn: state.turn
-    }));
-  }catch{}
-}
-
-function loadAutosave(){
-  try{
-    const raw=localStorage.getItem(AUTOSAVE_KEY);
-    if(!raw) return false;
-    const p=JSON.parse(raw);
-    applyStageSize(p.stage?.w||1600, p.stage?.h||900);
-    state.mapDataUrl=p.mapDataUrl||"";
-    if(state.mapDataUrl) mapImgEl.src=state.mapDataUrl; else mapImgEl.removeAttribute("src");
-    terrain=p.terrain||{};
-    state.infraShapes=p.infraShapes||[];
-    state.shapes=p.shapes||[];
-    state.units=p.units||[];
-    state.snapshots=p.snapshots||[];
-    state.idCounters=p.idCounters||{};
-    state.templates=p.templates||JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
-    state.turn=p.turn||0;
-    $("turnLabel").textContent=state.turn;
-    redrawTerrain(); renderInfra(); renderOverlays(); renderUnits();
-    rebuildUnitTypeDropdown($("unitSearch").value||"");
-    rebuildQuickBar();
-    recomputeAOTerritory();
-    return true;
-  }catch{return false;}
-}
+$("btnDuplicateSelected").onclick=duplicateSelectedUnit;
+$("btnFocusSelected").onclick=focusSelected;
 
 $("btnDeleteSelected").onclick=()=>{
   if(!state.selected.kind) return;
   const {kind,id}=state.selected;
-
   if(kind==="unit"){
     state.units=state.units.filter(u=>u.id!==id);
     renderUnits(); recomputeAOTerritory();
@@ -1453,6 +1835,7 @@ $("btnDeleteSelected").onclick=()=>{
   toast("Deleted.");
 };
 
+/* ================= Keyboard ================= */
 window.addEventListener("keydown",(e)=>{
   const tag=document.activeElement?.tagName?.toLowerCase();
   if((e.key==="Delete"||e.key==="Backspace") && !["input","textarea","select"].includes(tag)){
@@ -1477,6 +1860,7 @@ window.addEventListener("keydown",(e)=>{
   if(e.key.toLowerCase()==="f") focusSelected();
 });
 
+/* ================= Finish / Cancel ================= */
 $("btnFinishBuild").onclick=()=>finishTemp();
 $("btnCancelBuild").onclick=()=>{ state.temp.points=[]; state.temp.kind=null; renderTempPreview(); toast("Cancelled."); };
 $("btnFinishPlan").onclick=()=>finishTemp();
@@ -1488,7 +1872,17 @@ function finishTemp(){
   if(state.appMode==="build" && t==="poly"){
     if(state.temp.points.length<3){ toast("Polygon needs 3+ points."); return; }
     const type=$("terrainType").value;
-    fillPolygonToTerrain(state.temp.points, type);
+    tctx.save();
+    tctx.globalCompositeOperation="source-over";
+    tctx.fillStyle=terrainColor(type);
+    tctx.globalAlpha=0.72;
+    tctx.beginPath();
+    tctx.moveTo(state.temp.points[0].x, state.temp.points[0].y);
+    for(let i=1;i<state.temp.points.length;i++) tctx.lineTo(state.temp.points[i].x, state.temp.points[i].y);
+    tctx.closePath();
+    tctx.fill();
+    tctx.restore();
+
     state.temp.points=[]; state.temp.kind=null;
     renderTempPreview();
     toast(`Polygon filled as ${type}.`);
@@ -1547,6 +1941,7 @@ function finishTemp(){
   toast("Nothing to finish.");
 }
 
+/* ================= Snap to POI for lines ================= */
 function listPOIs(){ return state.infraShapes.filter(s=>s.kind==="poi"); }
 function snapToNearestPOI(p){
   if(!$("togSnapPOI").checked) return p;
@@ -1563,6 +1958,7 @@ function snapToNearestPOI(p){
   return p;
 }
 
+/* ================= Main Pointer Handling ================= */
 interaction.addEventListener("pointerdown",(ev)=>{
   const raw=stagePointFromClient(ev);
   const p = (state.appMode==="build" && ["road","river","border","poly"].includes(state.tool))
@@ -1587,8 +1983,12 @@ interaction.addEventListener("pointerdown",(ev)=>{
 
   if(state.appMode==="build" && (state.tool==="paint" || state.tool==="erase")){
     state.paint.down=true;
-    const type = (state.tool==="erase") ? null : $("terrainType").value;
-    paintAt(p.x,p.y,type);
+    state.paint.pts=[];
+    lastPaintPoint=null;
+    const type=$("terrainType").value;
+    const erase = (state.tool==="erase");
+    drawBrushDot(p.x,p.y,type,erase);
+    state.paint.pts.push(p);
     ev.preventDefault();
     return;
   }
@@ -1650,15 +2050,26 @@ window.addEventListener("pointermove",(ev)=>{
   if(state.appMode!=="build") return;
   if(!(state.tool==="paint"||state.tool==="erase")) return;
   const p=stagePointFromClient(ev);
-  const type = (state.tool==="erase") ? null : $("terrainType").value;
-  paintAt(p.x,p.y,type);
-});
-window.addEventListener("pointerup",()=>{ state.paint.down=false; });
+  const type=$("terrainType").value;
+  paintMove(p, type, state.tool==="erase");
+},{passive:false});
 
+window.addEventListener("pointerup",()=>{
+  if(state.paint.down){
+    const type=$("terrainType").value;
+    if(state.paint.pts.length>1){
+      drawBrushStroke(state.paint.pts, type, state.tool==="erase");
+    }
+  }
+  state.paint.down=false;
+  state.paint.pts=[];
+  lastPaintPoint=null;
+});
+
+/* ================= Temp Preview ================= */
 function renderTempPreview(){
   renderInfra();
   renderOverlays();
-
   const pts=state.temp.points;
   if(pts.length<2) return;
 
@@ -1712,6 +2123,7 @@ function renderTempPreview(){
   }
 }
 
+/* ================= Pick / Drag Infra ================= */
 function pickInfraAt(p){
   let best=null, bestD=Infinity;
   for(const s of state.infraShapes){
@@ -1753,6 +2165,7 @@ function startInfraDrag(ev, obj){
   interaction.addEventListener("pointercancel",up);
 }
 
+/* ================= AO Capture ================= */
 function unitCenter(u){ return {x:u.x+u.w/2, y:u.y+u.h/2}; }
 function recomputeAOTerritory(){
   const cap=$("togCapture");
@@ -1774,24 +2187,39 @@ function recomputeAOTerritory(){
   renderOverlays();
 }
 
+/* ================= Layers ================= */
 function applyLayerToggles(){
   mapImgEl.style.display = $("togMapImg").checked ? "block" : "none";
-  tileCanvas.style.display = $("togTerrain").checked ? "block" : "none";
+  terrainCanvas.style.display = $("togTerrain").checked ? "block" : "none";
+  coastSvg.style.display = $("togCoast").checked ? "block" : "none";
   infraSvg.style.display = $("togInfra").checked ? "block" : "none";
   unitsLayer.style.display = $("togUnits").checked ? "block" : "none";
   overlaySvg.style.display = $("togOverlays").checked ? "block" : "none";
+  const orderSvg=$("orderSvg"); if(orderSvg) orderSvg.style.display = $("togOverlays").checked ? "block" : "none";
 }
-["togMapImg","togTerrain","togInfra","togUnits","togOverlays"].forEach(id=>{
+["togMapImg","togTerrain","togCoast","togInfra","togUnits","togOverlays"].forEach(id=>{
   $(id).addEventListener("change", applyLayerToggles);
 });
 
+/* ================= Snapshots / Turns ================= */
+function getTerrainDataURL(){ return terrainCanvas.toDataURL("image/png"); }
+function setTerrainFromDataURL(url){
+  if(!url){ clearTerrain(); return; }
+  const img=new Image();
+  img.onload=()=>{
+    clearTerrain();
+    tctx.drawImage(img,0,0);
+  };
+  img.src=url;
+}
 function pushSnapshot(label=null){
   state.snapshots.push({
     label: label ?? `Turn ${state.turn}`,
     turn: state.turn,
     stage: {w:state.stage.w,h:state.stage.h},
     mapDataUrl: state.mapDataUrl,
-    terrain: JSON.parse(JSON.stringify(terrain)),
+    terrainPng: getTerrainDataURL(),
+    coast: JSON.parse(JSON.stringify(state.coast)),
     infraShapes: JSON.parse(JSON.stringify(state.infraShapes)),
     shapes: JSON.parse(JSON.stringify(state.shapes)),
     units: JSON.parse(JSON.stringify(state.units)),
@@ -1812,30 +2240,58 @@ function loadSnapshot(idx){
   state.mapDataUrl=s.mapDataUrl||"";
   if(state.mapDataUrl) mapImgEl.src=state.mapDataUrl; else mapImgEl.removeAttribute("src");
 
-  terrain=s.terrain||{};
+  setTerrainFromDataURL(s.terrainPng||"");
+
+  state.coast=s.coast || {enabled:true,oceanWidth:3,lakeWidth:2,oceanD:"",lakeD:""};
+
   state.infraShapes=s.infraShapes||[];
   state.shapes=s.shapes||[];
   state.units=s.units||[];
   state.idCounters=s.idCounters||{};
   if(s.templates) state.templates=s.templates;
 
-  redrawTerrain(); renderInfra(); renderOverlays(); renderUnits();
+  renderCoast();
+  renderInfra(); renderOverlays(); renderUnits();
   rebuildUnitTypeDropdown($("unitSearch").value||"");
   rebuildQuickBar();
   recomputeAOTerritory();
+  renderOrderPreview();
+  updateTurnUi();
 }
 $("btnSnap").onclick=()=>{ pushSnapshot(); toast("Snapshot saved."); };
 $("btnNewTurn").onclick=()=>{ state.turn+=1; $("turnLabel").textContent=state.turn; toast(`Turn ${state.turn}`); };
 $("turnSlider").addEventListener("input",(e)=>loadSnapshot(parseInt(e.target.value,10)));
-$("btnDuplicateSelected").onclick=duplicateSelectedUnit;
-$("btnFocusSelected").onclick=focusSelected;
 
+/* Replay */
+$("btnReplay").onclick=()=>{
+  if(state.replay.on){
+    state.replay.on=false;
+    clearInterval(state.replay.timer);
+    $("btnReplay").textContent="▶ Replay";
+    toast("Replay stopped.");
+    return;
+  }
+  if(state.snapshots.length<2){ toast("Need 2+ snapshots to replay."); return; }
+  state.replay.on=true;
+  $("btnReplay").textContent="⏸ Stop";
+  let i=parseInt($("turnSlider").value,10)||0;
+  state.replay.timer=setInterval(()=>{
+    i++;
+    if(i>=state.snapshots.length) i=0;
+    $("turnSlider").value=i;
+    loadSnapshot(i);
+  }, 900);
+  toast("Replay started.");
+};
+
+/* ================= Export / Import / Reset ================= */
 $("btnExport").onclick=()=>{
   $("ioBox").value = JSON.stringify({
-    version:"7.1",
+    version:"7.4",
     stage:{w:state.stage.w,h:state.stage.h},
     mapDataUrl: state.mapDataUrl,
-    terrain,
+    terrainPng: getTerrainDataURL(),
+    coast: state.coast,
     infraShapes: state.infraShapes,
     shapes: state.shapes,
     units: state.units,
@@ -1853,7 +2309,9 @@ $("btnImport").onclick=()=>{
     state.mapDataUrl=p.mapDataUrl||"";
     if(state.mapDataUrl) mapImgEl.src=state.mapDataUrl; else mapImgEl.removeAttribute("src");
 
-    terrain=p.terrain||{};
+    setTerrainFromDataURL(p.terrainPng||"");
+    state.coast=p.coast || {enabled:true,oceanWidth:3,lakeWidth:2,oceanD:"",lakeD:""};
+
     state.infraShapes=p.infraShapes||[];
     state.shapes=p.shapes||[];
     state.units=p.units||[];
@@ -1861,7 +2319,8 @@ $("btnImport").onclick=()=>{
     state.idCounters=p.idCounters||{};
     state.templates=p.templates||JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
 
-    redrawTerrain(); renderInfra(); renderOverlays(); renderUnits();
+    renderCoast();
+    renderInfra(); renderOverlays(); renderUnits();
     rebuildUnitTypeDropdown($("unitSearch").value||"");
     rebuildQuickBar();
     recomputeAOTerritory();
@@ -1872,16 +2331,25 @@ $("btnImport").onclick=()=>{
 };
 $("btnNewBlank").onclick=()=>{
   state.mapDataUrl=""; mapImgEl.removeAttribute("src");
-  terrain={}; state.infraShapes=[]; state.shapes=[]; state.units=[];
+  clearTerrain();
+  state.coast={enabled:true,oceanWidth:3,lakeWidth:2,oceanD:"",lakeD:""};
+  state.infraShapes=[]; state.shapes=[]; state.units=[];
   state.snapshots=[]; state.turn=0; state.idCounters={};
   state.templates=JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
-  redrawTerrain(); renderInfra(); renderOverlays(); renderUnits();
+  renderCoast(); renderInfra(); renderOverlays(); renderUnits();
   rebuildUnitTypeDropdown("");
   rebuildQuickBar();
   pushSnapshot("Turn 0 (Start)");
   toast("New blank scenario.");
 };
+$("btnFactoryReset").onclick=()=>{
+  if(confirm("Factory reset? Clears autosave + reloads fresh.")){
+    localStorage.removeItem(AUTOSAVE_KEY);
+    location.reload();
+  }
+};
 
+/* PNG Export */
 $("btnExportPng").onclick=exportStagePng;
 async function exportStagePng(){
   const W=state.stage.w, H=state.stage.h;
@@ -1893,8 +2361,13 @@ async function exportStagePng(){
     const img=await dataUrlToImage(state.mapDataUrl);
     drawContain(octx,img,0,0,W,H);
   }
-  if($("togTerrain").checked) octx.drawImage(tileCanvas,0,0);
-
+  if($("togTerrain").checked){
+    octx.drawImage(terrainCanvas,0,0);
+  }
+  if($("togCoast").checked && (state.coast.oceanD || state.coast.lakeD)){
+    const img=await dataUrlToImage(svgToDataUrl(coastSvg,W,H));
+    octx.drawImage(img,0,0);
+  }
   if($("togInfra").checked){
     const img=await dataUrlToImage(svgToDataUrl(infraSvg,W,H));
     octx.drawImage(img,0,0);
@@ -1948,6 +2421,7 @@ function drawContain(ctx,img,x,y,w,h){
   ctx.drawImage(img,dx,dy,dw,dh);
 }
 
+/* ================= Custom Unit Types ================= */
 $("btnAddCustomType").onclick=()=>{
   const name=($("customName").value||"").trim();
   if(!name){ toast("Type a unit name first."); return; }
@@ -1956,7 +2430,7 @@ $("btnAddCustomType").onclick=()=>{
   let base=name.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"") || "custom";
   let key=base, i=2;
   while(state.templates[key]){ key=base+"_"+i; i++; }
-  state.templates[key]={name,icon,quick};
+  state.templates[key]={name,icon,quick,group:"Custom"};
   rebuildUnitTypeDropdown($("unitSearch").value||"");
   rebuildQuickBar();
   $("customName").value=""; $("customQuick").checked=false;
@@ -1969,26 +2443,467 @@ $("btnResetTypes").onclick=()=>{
   toast("Defaults restored.");
 };
 
+/* ================= Turn Engine + Advanced Planning ================= */
+state.turnSystem={
+  phase:"planning",
+  commandPoints:12,
+  maxCommandPoints:12,
+  log:[],
+  casualties:{friendly:0,hostile:0,neutral:0,unknown:0}
+};
+state.selection={ids:new Set(), dragBox:null};
+state.scenarioTemplates={
+  kursk:{name:"Kursk (Lite)", setup:[{a:"friendly",x:260,y:260,t:"armor_bde"},{a:"hostile",x:1080,y:260,t:"armor_bde"}]},
+  normandy:{name:"Normandy (Lite)", setup:[{a:"friendly",x:280,y:520,t:"inf_div"},{a:"hostile",x:1150,y:450,t:"inf_div"}]}
+};
+
+function ensureAdvancedUi(){
+  const anchor=$("warPlanCard");
+  if(!anchor || $("turnPhaseBadge")) return;
+  anchor.insertAdjacentHTML("afterbegin", `
+    <div class="card" style="margin-top:0">
+      <h3>Turn Engine</h3>
+      <div class="row">
+        <div class="badge" id="turnPhaseBadge">Phase: Planning</div>
+        <div class="badge" id="cpBadge">CP: 12/12</div>
+      </div>
+      <label>Quick order</label>
+      <div class="row">
+        <select id="orderKind" class="bigSelect">
+          <option value="move">Move</option><option value="attack">Attack</option>
+          <option value="defend">Defend</option><option value="recon">Recon</option>
+        </select>
+        <button class="btn" id="btnQueueOrder">Queue on selected</button>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="btnResolveTurn">Resolve Turn</button>
+        <button class="btn secondary" id="btnEndPlanning">End Planning</button>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="btnExportOrders">Export Orders</button>
+        <button class="btn secondary" id="btnImportOrders">Import Orders</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Unit Status + Builder</h3>
+      <div class="row">
+        <select id="unitReadiness" class="bigSelect"><option value="full">Readiness: Full</option><option value="reduced">Readiness: Reduced</option><option value="minimal">Readiness: Minimal</option></select>
+        <select id="unitSupply" class="bigSelect"><option value="well">Supply: Well</option><option value="low">Supply: Low</option><option value="out">Supply: Out</option></select>
+      </div>
+      <div class="row">
+        <select id="unitModifier" class="bigSelect"><option value="none">Modifier: None</option><option value="mechanized">Mechanized</option><option value="motorized">Motorized</option><option value="armored">Armored</option><option value="airborne">Airborne</option><option value="marine">Marine</option><option value="mountain">Mountain</option></select>
+        <input id="unitCombatPower" type="number" min="1" max="100" value="50" placeholder="Combat Power" />
+      </div>
+      <div class="row">
+        <button class="btn" id="btnApplyStatus">Apply to selected</button>
+        <button class="btn secondary" id="btnAutoFormation">Auto Formation</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Turn History + Scenarios</h3>
+      <div id="turnHistory" style="max-height:140px;overflow:auto"></div>
+      <div class="row" style="margin-top:8px">
+        <select id="scenarioPreset" class="bigSelect"><option value="">Load Scenario Template</option><option value="kursk">Battle of Kursk (Lite)</option><option value="normandy">Normandy (Lite)</option></select>
+        <button class="btn" id="btnLoadScenario">Load</button>
+      </div>
+      <div id="intelPanel" class="hint" style="margin-top:8px">Intel: no reports yet.</div>
+      <div id="analyticsPanel" class="hint">Analytics: waiting for turns.</div>
+    </div>
+  `);
+
+  const stage=$("stage");
+  const orderSvg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+  orderSvg.id="orderSvg";
+  orderSvg.setAttribute("viewBox",`0 0 ${state.stage.w} ${state.stage.h}`);
+  orderSvg.setAttribute("preserveAspectRatio","none");
+  orderSvg.style.cssText="position:absolute;inset:0;z-index:4.2;pointer-events:none;width:100%;height:100%;";
+  stage.appendChild(orderSvg);
+
+  const fx=document.createElement("div");
+  fx.id="fxLayer";
+  fx.style.cssText="position:absolute;inset:0;z-index:6;pointer-events:none;overflow:hidden";
+  stage.appendChild(fx);
+
+  const summary=document.createElement("div");
+  summary.id="turnSummary";
+  summary.style.cssText="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:99999;background:#101b2a;border:1px solid #2a3d59;border-radius:14px;padding:14px;display:none;min-width:320px";
+  summary.innerHTML='<h3 style="margin:0 0 8px">Turn Summary</h3><div id="turnSummaryBody"></div><div style="margin-top:8px;text-align:right"><button class="btn secondary" id="btnCloseSummary">Close</button></div>';
+  document.body.appendChild(summary);
+
+  bindAdvancedEvents();
+  updateTurnUi();
+}
+
+function bindAdvancedEvents(){
+  $("btnQueueOrder").onclick=queueOrderForSelection;
+  $("btnResolveTurn").onclick=resolveTurn;
+  $("btnEndPlanning").onclick=()=>setPhase("resolution");
+  $("btnApplyStatus").onclick=applySelectedStatus;
+  $("btnAutoFormation").onclick=autoFormationSelected;
+  $("btnExportOrders").onclick=exportOrders;
+  $("btnImportOrders").onclick=importOrders;
+  $("btnLoadScenario").onclick=loadScenarioTemplate;
+  $("btnCloseSummary").onclick=()=>$("turnSummary").style.display="none";
+  unitsLayer.addEventListener("contextmenu",unitContextMenu);
+}
+
+function setPhase(phase){
+  state.turnSystem.phase=phase;
+  updateTurnUi();
+}
+
+function updateTurnUi(){
+  if(!$("turnPhaseBadge")) return;
+  $("turnPhaseBadge").textContent=`Phase: ${state.turnSystem.phase[0].toUpperCase()+state.turnSystem.phase.slice(1)}`;
+  $("cpBadge").textContent=`CP: ${state.turnSystem.commandPoints}/${state.turnSystem.maxCommandPoints}`;
+  renderOrderPreview();
+  renderTurnHistory();
+  renderAnalytics();
+}
+
+function getSelectedUnits(){
+  const ids=[...state.selection.ids];
+  if(state.selected.kind==="unit" && !ids.includes(state.selected.id)) ids.push(state.selected.id);
+  return state.units.filter((u)=>ids.includes(u.id));
+}
+
+function orderCost(kind){ return ({move:1,attack:3,defend:1,recon:2})[kind]||1; }
+function queueOrderForSelection(){
+  const list=getSelectedUnits();
+  if(!list.length){ toast("Select one or more units first."); return; }
+  const kind=$("orderKind").value;
+  const cost=orderCost(kind)*list.length;
+  if(state.turnSystem.commandPoints<cost){ toast("Not enough command points."); return; }
+  for(const u of list){
+    if(!u.orders) u.orders=[];
+    const tx=clamp(30,state.stage.w-30,u.x+u.w/2+(Math.random()*120-60));
+    const ty=clamp(30,state.stage.h-30,u.y+u.h/2+(Math.random()*120-60));
+    u.orders.push({kind,target:{x:tx,y:ty},turn:state.turn});
+  }
+  state.turnSystem.commandPoints-=cost;
+  state.turnSystem.log.unshift({turn:state.turn,txt:`Queued ${kind} for ${list.length} unit(s).`});
+  updateTurnUi();
+}
+
+function renderOrderPreview(){
+  const svg=$("orderSvg");
+  if(!svg) return;
+  svg.replaceChildren();
+  for(const u of state.units){
+    const o=u.orders?.[0];
+    if(!o) continue;
+    const line=document.createElementNS("http://www.w3.org/2000/svg","line");
+    line.setAttribute("x1",u.x+u.w/2); line.setAttribute("y1",u.y+u.h/2);
+    line.setAttribute("x2",o.target.x); line.setAttribute("y2",o.target.y);
+    line.setAttribute("stroke", o.kind==="attack"?"#ff7070":"#7aa7ff");
+    line.setAttribute("stroke-width","3");
+    line.setAttribute("stroke-dasharray","8 6");
+    svg.appendChild(line);
+  }
+}
+
+function animateUnitTo(u, target){
+  return new Promise((resolve)=>{
+    const from={x:u.x,y:u.y};
+    const t0=performance.now();
+    const dur=420;
+    function step(ts){
+      const k=Math.min(1,(ts-t0)/dur);
+      const e=1-Math.pow(1-k,3);
+      u.x=from.x+(target.x-u.w/2-from.x)*e;
+      u.y=from.y+(target.y-u.h/2-from.y)*e;
+      renderUnits();
+      if(k<1) requestAnimationFrame(step);
+      else resolve();
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+async function resolveTurn(){
+  setPhase("resolution");
+  let moves=0, combats=0;
+  for(const u of state.units){
+    const order=u.orders?.shift();
+    if(!order) continue;
+    if(order.kind==="move" || order.kind==="recon"){ await animateUnitTo(u, order.target); moves++; }
+    if(order.kind==="attack"){
+      combats++;
+      spawnFx(order.target.x, order.target.y, "💥");
+      runCombat(u, order.target);
+    }
+    if(order.kind==="defend") spawnFx(u.x+u.w/2,u.y+u.h/2,"🛡️");
+  }
+  recomputeAOTerritory();
+  state.turnSystem.commandPoints=state.turnSystem.maxCommandPoints;
+  state.turn+=1; $("turnLabel").textContent=state.turn;
+  state.turnSystem.log.unshift({turn:state.turn,txt:`Resolved turn: ${moves} moves, ${combats} combats.`});
+  maybeAiTurn();
+  setPhase("planning");
+  showTurnSummary(moves,combats);
+}
+
+function runCombat(attacker,target){
+  const enemies=state.units.filter((u)=>u.affil!==attacker.affil && dist2({x:u.x+u.w/2,y:u.y+u.h/2},target)<180*180);
+  if(!enemies.length) return;
+  const def=enemies[0];
+  const atk=(attacker.combatPower||50)*(attacker.readiness==="full"?1:attacker.readiness==="reduced"?0.8:0.6);
+  const dfn=(def.combatPower||50)*(def.readiness==="full"?1:0.75);
+  if(atk>=dfn){
+    def.health=Math.max(0,(def.health??100)-35);
+    state.turnSystem.casualties[def.affil]+=10;
+    spawnFx(def.x+def.w/2,def.y+def.h/2,"↘");
+    if(def.health<=0) state.units=state.units.filter((u)=>u.id!==def.id);
+  }else{
+    attacker.health=Math.max(0,(attacker.health??100)-20);
+    state.turnSystem.casualties[attacker.affil]+=6;
+  }
+}
+
+function spawnFx(x,y,txt){
+  const fx=$("fxLayer"); if(!fx) return;
+  const n=document.createElement("div");
+  n.textContent=txt;
+  n.style.cssText=`position:absolute;left:${x-10}px;top:${y-10}px;font-weight:900;animation:fxPop .7s ease-out forwards`;
+  fx.appendChild(n);
+  setTimeout(()=>n.remove(),740);
+}
+
+function showTurnSummary(moves,combats){
+  if(!$("turnSummary")) return;
+  $("turnSummaryBody").innerHTML=`<div>Turn ${state.turn}</div><div>Moves: ${moves}</div><div>Combats: ${combats}</div><div>Casualties F/H: ${state.turnSystem.casualties.friendly}/${state.turnSystem.casualties.hostile}</div>`;
+  $("turnSummary").style.display="block";
+}
+
+function renderTurnHistory(){
+  const box=$("turnHistory"); if(!box) return;
+  box.innerHTML="";
+  for(const e of state.turnSystem.log.slice(0,25)){
+    const item=document.createElement("div");
+    item.className="hint";
+    item.style.cursor="pointer";
+    item.textContent=`T${e.turn}: ${e.txt}`;
+    item.onclick=()=>toast(`Jumped to turn ${e.turn}`);
+    box.appendChild(item);
+  }
+}
+
+function applySelectedStatus(){
+  const units=getSelectedUnits();
+  if(!units.length){ toast("Select units first."); return; }
+  for(const u of units){
+    u.readiness=$("unitReadiness").value;
+    u.supply=$("unitSupply").value;
+    u.modifier=$("unitModifier").value;
+    u.combatPower=parseInt($("unitCombatPower").value,10)||50;
+    if(u.health===undefined) u.health=100;
+    if(u.morale===undefined) u.morale=75;
+  }
+  renderUnits();
+  toast("Status applied.");
+}
+
+function autoFormationSelected(){
+  const units=getSelectedUnits();
+  if(units.length<2){ toast("Select 2+ units for formation."); return; }
+  const mode=(window.prompt("Formation: line / echelon / arc","line")||"line").toLowerCase();
+  const bx=units[0].x, by=units[0].y;
+  units.forEach((u,i)=>{
+    if(mode==="echelon"){ u.x=bx+i*54; u.y=by+i*30; }
+    else if(mode==="arc"){ u.x=bx+Math.cos((i/(units.length-1||1))*Math.PI)*130+140; u.y=by+Math.sin((i/(units.length-1||1))*Math.PI)*80; }
+    else { u.x=bx+i*56; u.y=by; }
+  });
+  renderUnits();
+}
+
+function unitContextMenu(ev){
+  const card=ev.target.closest('.unit');
+  if(!card) return;
+  ev.preventDefault();
+  const choice=prompt("Action: attack / move / digin");
+  if(!choice) return;
+  $("orderKind").value=choice==="attack"?"attack":choice==="move"?"move":"defend";
+  queueOrderForSelection();
+}
+
+function exportOrders(){
+  const payload=state.units.map((u)=>({id:u.id,orders:u.orders||[]})).filter((u)=>u.orders.length);
+  $("ioBox").value=JSON.stringify({turn:state.turn,orders:payload},null,2);
+  toast("Orders exported.");
+}
+function importOrders(){
+  try{
+    const p=JSON.parse($("ioBox").value||"{}");
+    for(const rec of (p.orders||[])){
+      const u=state.units.find((x)=>x.id===rec.id);
+      if(u) u.orders=rec.orders||[];
+    }
+    renderOrderPreview();
+    toast("Orders imported.");
+  }catch(e){ toast("Import orders failed: "+e.message); }
+}
+
+function maybeAiTurn(){
+  // Simple AI opponent for hostile side.
+  for(const u of state.units.filter((x)=>x.affil==="hostile")){
+    u.x=clamp(0,state.stage.w-u.w,u.x+(Math.random()*80-40));
+    u.y=clamp(0,state.stage.h-u.h,u.y+(Math.random()*80-40));
+  }
+  renderUnits();
+}
+
+function loadScenarioTemplate(){
+  const key=$("scenarioPreset").value;
+  const preset=state.scenarioTemplates[key];
+  if(!preset){ toast("Choose a scenario template."); return; }
+  $("btnNewBlank").click();
+  setAppMode("plan");
+  preset.setup.forEach((s)=>{
+    $("affil").value=s.a; $("unitType").value=s.t; addUnit();
+    const u=state.units[state.units.length-1]; u.x=s.x; u.y=s.y;
+  });
+  renderUnits();
+  state.turnSystem.log.unshift({turn:state.turn,txt:`Loaded template: ${preset.name}`});
+  updateTurnUi();
+}
+
+function renderAnalytics(){
+  const p=$("analyticsPanel");
+  if(!p) return;
+  const byAff={friendly:0,hostile:0,neutral:0,unknown:0};
+  state.units.forEach((u)=>byAff[u.affil]=(byAff[u.affil]||0)+(u.combatPower||50));
+  const totalZones=state.shapes.filter((s)=>s.kind==="zone"&&s.drawKind==="ao").length||1;
+  const owned=state.shapes.filter((s)=>s.kind==="zone"&&s.drawKind==="ao"&&s.owner==="friendly").length;
+  p.textContent=`Analytics — Power F/H: ${byAff.friendly}/${byAff.hostile} • Territory: ${Math.round((owned/totalZones)*100)}% friendly • Supply efficiency: ${Math.max(20,100-state.turnSystem.casualties.friendly)}%`;
+  const intel=$("intelPanel");
+  if(intel){
+    const recon=state.units.filter((u)=>u.orders?.some((o)=>o.kind==="recon")).length;
+    intel.textContent=`Intel: ${recon} recon elements active. Unknown contacts shown by default when Fog is enabled.`;
+  }
+}
+
+window.addEventListener("keydown",(e)=>{
+  if(e.key.toLowerCase()==="a"){ $("orderKind").value="attack"; queueOrderForSelection(); }
+  if(e.key.toLowerCase()==="m"){ $("orderKind").value="move"; queueOrderForSelection(); }
+  if(e.key.toLowerCase()==="g"){ $("orderKind").value="defend"; queueOrderForSelection(); }
+});
+
+function installBatchSelect(){
+  let box=null, start=null;
+  mapArea.addEventListener("pointerdown",(ev)=>{
+    if(state.appMode!=="plan"||state.tool!=="selectPlan"||ev.target.closest('.unit')) return;
+    start=stagePointFromClient(ev);
+    box=document.createElement('div');
+    box.style.cssText='position:absolute;border:1px dashed #7aa7ff;background:rgba(122,167,255,.12);z-index:9;pointer-events:none';
+    stageEl.appendChild(box);
+  });
+  mapArea.addEventListener("pointermove",(ev)=>{
+    if(!box||!start) return;
+    const p=stagePointFromClient(ev);
+    const x=Math.min(start.x,p.x), y=Math.min(start.y,p.y), w=Math.abs(p.x-start.x), h=Math.abs(p.y-start.y);
+    Object.assign(box.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});
+  });
+  mapArea.addEventListener("pointerup",()=>{
+    if(!box||!start) return;
+    const r=box.getBoundingClientRect();
+    state.selection.ids.clear();
+    for(const u of state.units){
+      const ux=u.x+u.w/2, uy=u.y+u.h/2;
+      const sr=stageEl.getBoundingClientRect();
+      const cx=sr.left+ux*state.stage.zoom, cy=sr.top+uy*state.stage.zoom;
+      if(cx>=r.left&&cx<=r.right&&cy>=r.top&&cy<=r.bottom) state.selection.ids.add(u.id);
+    }
+    box.remove(); box=null; start=null;
+    toast(`Selected ${state.selection.ids.size} units.`);
+  });
+}
+
+/* ================= Autosave ================= */
+function saveAutosave(){
+  try{
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+      version:"7.4-autosave",
+      stage:{w:state.stage.w,h:state.stage.h},
+      mapDataUrl: state.mapDataUrl,
+      terrainPng: getTerrainDataURL(),
+      coast: state.coast,
+      infraShapes: state.infraShapes,
+      shapes: state.shapes,
+      units: state.units,
+      snapshots: state.snapshots,
+      idCounters: state.idCounters,
+      templates: state.templates,
+      turn: state.turn
+    }));
+  }catch{}
+}
+function loadAutosave(){
+  try{
+    const raw=localStorage.getItem(AUTOSAVE_KEY);
+    if(!raw) return false;
+    const p=JSON.parse(raw);
+    applyStageSize(p.stage?.w||1600, p.stage?.h||900);
+    state.mapDataUrl=p.mapDataUrl||"";
+    if(state.mapDataUrl) mapImgEl.src=state.mapDataUrl; else mapImgEl.removeAttribute("src");
+    setTerrainFromDataURL(p.terrainPng||"");
+    state.coast=p.coast || {enabled:true,oceanWidth:3,lakeWidth:2,oceanD:"",lakeD:""};
+    state.infraShapes=p.infraShapes||[];
+    state.shapes=p.shapes||[];
+    state.units=p.units||[];
+    state.snapshots=p.snapshots||[];
+    state.idCounters=p.idCounters||{};
+    state.templates=p.templates||JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+    state.turn=p.turn||0;
+    $("turnLabel").textContent=state.turn;
+    renderCoast(); renderInfra(); renderOverlays(); renderUnits();
+    rebuildUnitTypeDropdown($("unitSearch").value||"");
+    rebuildQuickBar();
+    recomputeAOTerritory();
+    return true;
+  }catch{return false;}
+}
+
+/* ================= Help ================= */
 $("btnHelp").onclick=()=>{
-  alert(`WAR TRACKER v7.1 FULL (Fixed)
+  alert(`WAR TRACKER v7.4 (Smooth Paint + Ocean Coastline + Lake Shores)
+
+Build Map:
+- Smooth Paint: click/drag to paint terrain (anti-aliased strokes)
+- Erase: removes terrain
+- Polygon Fill: click 3+ points → Finish
+- Roads/rivers/borders: click points → Finish
+- Labels/POIs/Stamps: click to place; Select to drag; R to rotate
+- Coastlines: Paint Sea next to Land → Generate Ocean + Lakes
+  Ocean = sea connected to map edge. Lakes = enclosed sea.
 
 War Plan:
-- Select: drag/resize/rotate units ✅
+- Select: drag/resize/rotate units
 - Front: click points → Finish
 - Zone/AO: click 3+ points → Finish (AO auto-captures if enabled)
 - Note: click to place text
 
-Build Map:
-- Paint: click/drag to paint terrain
-- Polygon island: click 3+ points → Finish (fills as selected terrain)
-- Roads/rivers/borders: click points → Finish
-- Labels/POIs/Stamps: click to place; Select to drag; R to rotate
+Turn Replay:
+- Save snapshots (💾) then press Replay (▶)
 
-Keys: Esc cancel • Del delete • R rotate POI/stamp/label`);
+Keys: Esc cancel • Del delete • R rotate POI/stamp/label • D duplicate unit • F focus unit`);
 };
+
+/* ================= Layers + Init ================= */
+function applyLayerToggles(){
+  mapImgEl.style.display = $("togMapImg").checked ? "block" : "none";
+  terrainCanvas.style.display = $("togTerrain").checked ? "block" : "none";
+  coastSvg.style.display = $("togCoast").checked ? "block" : "none";
+  infraSvg.style.display = $("togInfra").checked ? "block" : "none";
+  unitsLayer.style.display = $("togUnits").checked ? "block" : "none";
+  overlaySvg.style.display = $("togOverlays").checked ? "block" : "none";
+  const orderSvg=$("orderSvg"); if(orderSvg) orderSvg.style.display = $("togOverlays").checked ? "block" : "none";
+}
 
 function init(){
   loadTemplates(true);
+  ensureAdvancedUi();
+  installBatchSelect();
+  const fxStyle=document.createElement("style"); fxStyle.textContent="@keyframes fxPop{0%{transform:scale(.6);opacity:1}100%{transform:translateY(-22px) scale(1.1);opacity:0}}"; document.head.appendChild(fxStyle);
   const restored=loadAutosave();
   if(!restored){
     applyStageSize(1600,900);
@@ -1997,10 +2912,12 @@ function init(){
     setTool("paint");
     applyLayerToggles();
     pushSnapshot("Turn 0 (Start)");
+  }else{
+    applyLayerToggles();
   }
   updateInteractionPointerEvents();
   setInterval(saveAutosave, 3000);
-  toast(restored ? "Restored autosave." : "v7.1 FULL loaded: map builder + war plan + drag fixed.");
+  toast(restored ? "Restored autosave." : "v7.4 loaded: smooth paint + ocean + lake coastlines.");
 }
 init();
 </script>
