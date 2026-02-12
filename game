@@ -819,6 +819,7 @@ function applyStageSize(w,h){
   coastSvg.setAttribute("viewBox",`0 0 ${w} ${h}`);
   infraSvg.setAttribute("viewBox",`0 0 ${w} ${h}`);
   overlaySvg.setAttribute("viewBox",`0 0 ${w} ${h}`);
+  const orderSvg=$("orderSvg"); if(orderSvg) orderSvg.setAttribute("viewBox",`0 0 ${w} ${h}`);
 
   renderCoast();
   renderInfra();
@@ -1588,7 +1589,8 @@ function addUnit(){
     echelon,
     x: 160 + Math.random()*180,
     y: 140 + Math.random()*180,
-    w:170, h:102, rot:0
+    w:170, h:102, rot:0,
+    readiness:"full", supply:"well", morale:75, health:100, combatPower:50, modifier:"none", orders:[], parentId:null
   };
   state.units.push(unit);
 
@@ -1612,7 +1614,14 @@ function renderUnits(){
 
     const meta=document.createElement("div");
     meta.className="unitMeta";
-    meta.innerHTML=`<div class="id">${escapeHtml(u.id)}</div><div class="echelon">${escapeHtml(u.echelon)}</div>`;
+    const hp=Math.max(0,Math.min(100,u.health??100));
+    const fogOn=window.__fogOn===true;
+    const hidden=fogOn && u.affil==="hostile" && !u.revealed;
+    meta.innerHTML=`<div class="id">${hidden?"UNKNOWN":escapeHtml(u.id)}</div><div class="echelon">${escapeHtml(u.echelon)}</div>`;
+    const hpBar=document.createElement("div");
+    hpBar.style.cssText="position:absolute;left:10px;right:10px;bottom:-4px;height:4px;background:rgba(0,0,0,.4);border-radius:999px";
+    hpBar.innerHTML=`<div style="height:100%;width:${hp}%;background:${hp>60?"#45d37a":hp>30?"#ffd24a":"#ff6b6b"};border-radius:999px"></div>`;
+    el.appendChild(hpBar);
     el.appendChild(meta);
 
     const handles=document.createElement("div");
@@ -1627,9 +1636,7 @@ function renderUnits(){
     el.addEventListener("pointerdown",(ev)=>{
       if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
       ev.stopPropagation(); ev.preventDefault();
-      state.selected={kind:"unit",id:u.id};
-      $("selectedBadge").textContent=`Selected: unit ${u.id}`;
-      renderUnits();
+      markUnitSelectedLive(u.id, el);
       startUnitDrag(ev, el, u);
     });
 
@@ -1637,9 +1644,7 @@ function renderUnits(){
       h.addEventListener("pointerdown",(ev)=>{
         if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
         ev.stopPropagation(); ev.preventDefault();
-        state.selected={kind:"unit",id:u.id};
-        $("selectedBadge").textContent=`Selected: unit ${u.id}`;
-        renderUnits();
+        markUnitSelectedLive(u.id, el);
         startUnitResize(ev, el, u,
           h.classList.contains("br")?"br":
           h.classList.contains("tr")?"tr":
@@ -1650,9 +1655,7 @@ function renderUnits(){
     handles.querySelector(".rotHandle").addEventListener("pointerdown",(ev)=>{
       if(state.appMode!=="plan" || state.tool!=="selectPlan") return;
       ev.stopPropagation(); ev.preventDefault();
-      state.selected={kind:"unit",id:u.id};
-      $("selectedBadge").textContent=`Selected: unit ${u.id}`;
-      renderUnits();
+      markUnitSelectedLive(u.id, el);
       startUnitRotate(ev, el, u);
     });
 
@@ -1665,6 +1668,12 @@ function renderUnits(){
     unitsLayer.appendChild(el);
   }
   applyLayerToggles();
+}
+function markUnitSelectedLive(unitId, el){
+  state.selected={kind:"unit",id:unitId};
+  $("selectedBadge").textContent=`Selected: unit ${unitId}`;
+  unitsLayer.querySelectorAll('.unit.selected').forEach((n)=>n.classList.remove('selected'));
+  if(el) el.classList.add('selected');
 }
 function startUnitDrag(ev, el, u){
   el.classList.add("dragging");
@@ -2186,6 +2195,7 @@ function applyLayerToggles(){
   infraSvg.style.display = $("togInfra").checked ? "block" : "none";
   unitsLayer.style.display = $("togUnits").checked ? "block" : "none";
   overlaySvg.style.display = $("togOverlays").checked ? "block" : "none";
+  const orderSvg=$("orderSvg"); if(orderSvg) orderSvg.style.display = $("togOverlays").checked ? "block" : "none";
 }
 ["togMapImg","togTerrain","togCoast","togInfra","togUnits","togOverlays"].forEach(id=>{
   $(id).addEventListener("change", applyLayerToggles);
@@ -2245,6 +2255,8 @@ function loadSnapshot(idx){
   rebuildUnitTypeDropdown($("unitSearch").value||"");
   rebuildQuickBar();
   recomputeAOTerritory();
+  renderOrderPreview();
+  updateTurnUi();
 }
 $("btnSnap").onclick=()=>{ pushSnapshot(); toast("Snapshot saved."); };
 $("btnNewTurn").onclick=()=>{ state.turn+=1; $("turnLabel").textContent=state.turn; toast(`Turn ${state.turn}`); };
@@ -2431,6 +2443,381 @@ $("btnResetTypes").onclick=()=>{
   toast("Defaults restored.");
 };
 
+/* ================= Turn Engine + Advanced Planning ================= */
+state.turnSystem={
+  phase:"planning",
+  commandPoints:12,
+  maxCommandPoints:12,
+  log:[],
+  casualties:{friendly:0,hostile:0,neutral:0,unknown:0}
+};
+state.selection={ids:new Set(), dragBox:null};
+state.scenarioTemplates={
+  kursk:{name:"Kursk (Lite)", setup:[{a:"friendly",x:260,y:260,t:"armor_bde"},{a:"hostile",x:1080,y:260,t:"armor_bde"}]},
+  normandy:{name:"Normandy (Lite)", setup:[{a:"friendly",x:280,y:520,t:"inf_div"},{a:"hostile",x:1150,y:450,t:"inf_div"}]}
+};
+
+function ensureAdvancedUi(){
+  const anchor=$("warPlanCard");
+  if(!anchor || $("turnPhaseBadge")) return;
+  anchor.insertAdjacentHTML("afterbegin", `
+    <div class="card" style="margin-top:0">
+      <h3>Turn Engine</h3>
+      <div class="row">
+        <div class="badge" id="turnPhaseBadge">Phase: Planning</div>
+        <div class="badge" id="cpBadge">CP: 12/12</div>
+      </div>
+      <label>Quick order</label>
+      <div class="row">
+        <select id="orderKind" class="bigSelect">
+          <option value="move">Move</option><option value="attack">Attack</option>
+          <option value="defend">Defend</option><option value="recon">Recon</option>
+        </select>
+        <button class="btn" id="btnQueueOrder">Queue on selected</button>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="btnResolveTurn">Resolve Turn</button>
+        <button class="btn secondary" id="btnEndPlanning">End Planning</button>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="btnExportOrders">Export Orders</button>
+        <button class="btn secondary" id="btnImportOrders">Import Orders</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Unit Status + Builder</h3>
+      <div class="row">
+        <select id="unitReadiness" class="bigSelect"><option value="full">Readiness: Full</option><option value="reduced">Readiness: Reduced</option><option value="minimal">Readiness: Minimal</option></select>
+        <select id="unitSupply" class="bigSelect"><option value="well">Supply: Well</option><option value="low">Supply: Low</option><option value="out">Supply: Out</option></select>
+      </div>
+      <div class="row">
+        <select id="unitModifier" class="bigSelect"><option value="none">Modifier: None</option><option value="mechanized">Mechanized</option><option value="motorized">Motorized</option><option value="armored">Armored</option><option value="airborne">Airborne</option><option value="marine">Marine</option><option value="mountain">Mountain</option></select>
+        <input id="unitCombatPower" type="number" min="1" max="100" value="50" placeholder="Combat Power" />
+      </div>
+      <div class="row">
+        <button class="btn" id="btnApplyStatus">Apply to selected</button>
+        <button class="btn secondary" id="btnAutoFormation">Auto Formation</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Turn History + Scenarios</h3>
+      <div id="turnHistory" style="max-height:140px;overflow:auto"></div>
+      <div class="row" style="margin-top:8px">
+        <select id="scenarioPreset" class="bigSelect"><option value="">Load Scenario Template</option><option value="kursk">Battle of Kursk (Lite)</option><option value="normandy">Normandy (Lite)</option></select>
+        <button class="btn" id="btnLoadScenario">Load</button>
+      </div>
+      <div id="intelPanel" class="hint" style="margin-top:8px">Intel: no reports yet.</div>
+      <div id="analyticsPanel" class="hint">Analytics: waiting for turns.</div>
+    </div>
+  `);
+
+  const stage=$("stage");
+  const orderSvg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+  orderSvg.id="orderSvg";
+  orderSvg.setAttribute("viewBox",`0 0 ${state.stage.w} ${state.stage.h}`);
+  orderSvg.setAttribute("preserveAspectRatio","none");
+  orderSvg.style.cssText="position:absolute;inset:0;z-index:4.2;pointer-events:none;width:100%;height:100%;";
+  stage.appendChild(orderSvg);
+
+  const fx=document.createElement("div");
+  fx.id="fxLayer";
+  fx.style.cssText="position:absolute;inset:0;z-index:6;pointer-events:none;overflow:hidden";
+  stage.appendChild(fx);
+
+  const summary=document.createElement("div");
+  summary.id="turnSummary";
+  summary.style.cssText="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:99999;background:#101b2a;border:1px solid #2a3d59;border-radius:14px;padding:14px;display:none;min-width:320px";
+  summary.innerHTML='<h3 style="margin:0 0 8px">Turn Summary</h3><div id="turnSummaryBody"></div><div style="margin-top:8px;text-align:right"><button class="btn secondary" id="btnCloseSummary">Close</button></div>';
+  document.body.appendChild(summary);
+
+  bindAdvancedEvents();
+  updateTurnUi();
+}
+
+function bindAdvancedEvents(){
+  $("btnQueueOrder").onclick=queueOrderForSelection;
+  $("btnResolveTurn").onclick=resolveTurn;
+  $("btnEndPlanning").onclick=()=>setPhase("resolution");
+  $("btnApplyStatus").onclick=applySelectedStatus;
+  $("btnAutoFormation").onclick=autoFormationSelected;
+  $("btnExportOrders").onclick=exportOrders;
+  $("btnImportOrders").onclick=importOrders;
+  $("btnLoadScenario").onclick=loadScenarioTemplate;
+  $("btnCloseSummary").onclick=()=>$("turnSummary").style.display="none";
+  unitsLayer.addEventListener("contextmenu",unitContextMenu);
+}
+
+function setPhase(phase){
+  state.turnSystem.phase=phase;
+  updateTurnUi();
+}
+
+function updateTurnUi(){
+  if(!$("turnPhaseBadge")) return;
+  $("turnPhaseBadge").textContent=`Phase: ${state.turnSystem.phase[0].toUpperCase()+state.turnSystem.phase.slice(1)}`;
+  $("cpBadge").textContent=`CP: ${state.turnSystem.commandPoints}/${state.turnSystem.maxCommandPoints}`;
+  renderOrderPreview();
+  renderTurnHistory();
+  renderAnalytics();
+}
+
+function getSelectedUnits(){
+  const ids=[...state.selection.ids];
+  if(state.selected.kind==="unit" && !ids.includes(state.selected.id)) ids.push(state.selected.id);
+  return state.units.filter((u)=>ids.includes(u.id));
+}
+
+function orderCost(kind){ return ({move:1,attack:3,defend:1,recon:2})[kind]||1; }
+function queueOrderForSelection(){
+  const list=getSelectedUnits();
+  if(!list.length){ toast("Select one or more units first."); return; }
+  const kind=$("orderKind").value;
+  const cost=orderCost(kind)*list.length;
+  if(state.turnSystem.commandPoints<cost){ toast("Not enough command points."); return; }
+  for(const u of list){
+    if(!u.orders) u.orders=[];
+    const tx=clamp(30,state.stage.w-30,u.x+u.w/2+(Math.random()*120-60));
+    const ty=clamp(30,state.stage.h-30,u.y+u.h/2+(Math.random()*120-60));
+    u.orders.push({kind,target:{x:tx,y:ty},turn:state.turn});
+  }
+  state.turnSystem.commandPoints-=cost;
+  state.turnSystem.log.unshift({turn:state.turn,txt:`Queued ${kind} for ${list.length} unit(s).`});
+  updateTurnUi();
+}
+
+function renderOrderPreview(){
+  const svg=$("orderSvg");
+  if(!svg) return;
+  svg.replaceChildren();
+  for(const u of state.units){
+    const o=u.orders?.[0];
+    if(!o) continue;
+    const line=document.createElementNS("http://www.w3.org/2000/svg","line");
+    line.setAttribute("x1",u.x+u.w/2); line.setAttribute("y1",u.y+u.h/2);
+    line.setAttribute("x2",o.target.x); line.setAttribute("y2",o.target.y);
+    line.setAttribute("stroke", o.kind==="attack"?"#ff7070":"#7aa7ff");
+    line.setAttribute("stroke-width","3");
+    line.setAttribute("stroke-dasharray","8 6");
+    svg.appendChild(line);
+  }
+}
+
+function animateUnitTo(u, target){
+  return new Promise((resolve)=>{
+    const from={x:u.x,y:u.y};
+    const t0=performance.now();
+    const dur=420;
+    function step(ts){
+      const k=Math.min(1,(ts-t0)/dur);
+      const e=1-Math.pow(1-k,3);
+      u.x=from.x+(target.x-u.w/2-from.x)*e;
+      u.y=from.y+(target.y-u.h/2-from.y)*e;
+      renderUnits();
+      if(k<1) requestAnimationFrame(step);
+      else resolve();
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+async function resolveTurn(){
+  setPhase("resolution");
+  let moves=0, combats=0;
+  for(const u of state.units){
+    const order=u.orders?.shift();
+    if(!order) continue;
+    if(order.kind==="move" || order.kind==="recon"){ await animateUnitTo(u, order.target); moves++; }
+    if(order.kind==="attack"){
+      combats++;
+      spawnFx(order.target.x, order.target.y, "💥");
+      runCombat(u, order.target);
+    }
+    if(order.kind==="defend") spawnFx(u.x+u.w/2,u.y+u.h/2,"🛡️");
+  }
+  recomputeAOTerritory();
+  state.turnSystem.commandPoints=state.turnSystem.maxCommandPoints;
+  state.turn+=1; $("turnLabel").textContent=state.turn;
+  state.turnSystem.log.unshift({turn:state.turn,txt:`Resolved turn: ${moves} moves, ${combats} combats.`});
+  maybeAiTurn();
+  setPhase("planning");
+  showTurnSummary(moves,combats);
+}
+
+function runCombat(attacker,target){
+  const enemies=state.units.filter((u)=>u.affil!==attacker.affil && dist2({x:u.x+u.w/2,y:u.y+u.h/2},target)<180*180);
+  if(!enemies.length) return;
+  const def=enemies[0];
+  const atk=(attacker.combatPower||50)*(attacker.readiness==="full"?1:attacker.readiness==="reduced"?0.8:0.6);
+  const dfn=(def.combatPower||50)*(def.readiness==="full"?1:0.75);
+  if(atk>=dfn){
+    def.health=Math.max(0,(def.health??100)-35);
+    state.turnSystem.casualties[def.affil]+=10;
+    spawnFx(def.x+def.w/2,def.y+def.h/2,"↘");
+    if(def.health<=0) state.units=state.units.filter((u)=>u.id!==def.id);
+  }else{
+    attacker.health=Math.max(0,(attacker.health??100)-20);
+    state.turnSystem.casualties[attacker.affil]+=6;
+  }
+}
+
+function spawnFx(x,y,txt){
+  const fx=$("fxLayer"); if(!fx) return;
+  const n=document.createElement("div");
+  n.textContent=txt;
+  n.style.cssText=`position:absolute;left:${x-10}px;top:${y-10}px;font-weight:900;animation:fxPop .7s ease-out forwards`;
+  fx.appendChild(n);
+  setTimeout(()=>n.remove(),740);
+}
+
+function showTurnSummary(moves,combats){
+  if(!$("turnSummary")) return;
+  $("turnSummaryBody").innerHTML=`<div>Turn ${state.turn}</div><div>Moves: ${moves}</div><div>Combats: ${combats}</div><div>Casualties F/H: ${state.turnSystem.casualties.friendly}/${state.turnSystem.casualties.hostile}</div>`;
+  $("turnSummary").style.display="block";
+}
+
+function renderTurnHistory(){
+  const box=$("turnHistory"); if(!box) return;
+  box.innerHTML="";
+  for(const e of state.turnSystem.log.slice(0,25)){
+    const item=document.createElement("div");
+    item.className="hint";
+    item.style.cursor="pointer";
+    item.textContent=`T${e.turn}: ${e.txt}`;
+    item.onclick=()=>toast(`Jumped to turn ${e.turn}`);
+    box.appendChild(item);
+  }
+}
+
+function applySelectedStatus(){
+  const units=getSelectedUnits();
+  if(!units.length){ toast("Select units first."); return; }
+  for(const u of units){
+    u.readiness=$("unitReadiness").value;
+    u.supply=$("unitSupply").value;
+    u.modifier=$("unitModifier").value;
+    u.combatPower=parseInt($("unitCombatPower").value,10)||50;
+    if(u.health===undefined) u.health=100;
+    if(u.morale===undefined) u.morale=75;
+  }
+  renderUnits();
+  toast("Status applied.");
+}
+
+function autoFormationSelected(){
+  const units=getSelectedUnits();
+  if(units.length<2){ toast("Select 2+ units for formation."); return; }
+  const mode=(window.prompt("Formation: line / echelon / arc","line")||"line").toLowerCase();
+  const bx=units[0].x, by=units[0].y;
+  units.forEach((u,i)=>{
+    if(mode==="echelon"){ u.x=bx+i*54; u.y=by+i*30; }
+    else if(mode==="arc"){ u.x=bx+Math.cos((i/(units.length-1||1))*Math.PI)*130+140; u.y=by+Math.sin((i/(units.length-1||1))*Math.PI)*80; }
+    else { u.x=bx+i*56; u.y=by; }
+  });
+  renderUnits();
+}
+
+function unitContextMenu(ev){
+  const card=ev.target.closest('.unit');
+  if(!card) return;
+  ev.preventDefault();
+  const choice=prompt("Action: attack / move / digin");
+  if(!choice) return;
+  $("orderKind").value=choice==="attack"?"attack":choice==="move"?"move":"defend";
+  queueOrderForSelection();
+}
+
+function exportOrders(){
+  const payload=state.units.map((u)=>({id:u.id,orders:u.orders||[]})).filter((u)=>u.orders.length);
+  $("ioBox").value=JSON.stringify({turn:state.turn,orders:payload},null,2);
+  toast("Orders exported.");
+}
+function importOrders(){
+  try{
+    const p=JSON.parse($("ioBox").value||"{}");
+    for(const rec of (p.orders||[])){
+      const u=state.units.find((x)=>x.id===rec.id);
+      if(u) u.orders=rec.orders||[];
+    }
+    renderOrderPreview();
+    toast("Orders imported.");
+  }catch(e){ toast("Import orders failed: "+e.message); }
+}
+
+function maybeAiTurn(){
+  // Simple AI opponent for hostile side.
+  for(const u of state.units.filter((x)=>x.affil==="hostile")){
+    u.x=clamp(0,state.stage.w-u.w,u.x+(Math.random()*80-40));
+    u.y=clamp(0,state.stage.h-u.h,u.y+(Math.random()*80-40));
+  }
+  renderUnits();
+}
+
+function loadScenarioTemplate(){
+  const key=$("scenarioPreset").value;
+  const preset=state.scenarioTemplates[key];
+  if(!preset){ toast("Choose a scenario template."); return; }
+  $("btnNewBlank").click();
+  setAppMode("plan");
+  preset.setup.forEach((s)=>{
+    $("affil").value=s.a; $("unitType").value=s.t; addUnit();
+    const u=state.units[state.units.length-1]; u.x=s.x; u.y=s.y;
+  });
+  renderUnits();
+  state.turnSystem.log.unshift({turn:state.turn,txt:`Loaded template: ${preset.name}`});
+  updateTurnUi();
+}
+
+function renderAnalytics(){
+  const p=$("analyticsPanel");
+  if(!p) return;
+  const byAff={friendly:0,hostile:0,neutral:0,unknown:0};
+  state.units.forEach((u)=>byAff[u.affil]=(byAff[u.affil]||0)+(u.combatPower||50));
+  const totalZones=state.shapes.filter((s)=>s.kind==="zone"&&s.drawKind==="ao").length||1;
+  const owned=state.shapes.filter((s)=>s.kind==="zone"&&s.drawKind==="ao"&&s.owner==="friendly").length;
+  p.textContent=`Analytics — Power F/H: ${byAff.friendly}/${byAff.hostile} • Territory: ${Math.round((owned/totalZones)*100)}% friendly • Supply efficiency: ${Math.max(20,100-state.turnSystem.casualties.friendly)}%`;
+  const intel=$("intelPanel");
+  if(intel){
+    const recon=state.units.filter((u)=>u.orders?.some((o)=>o.kind==="recon")).length;
+    intel.textContent=`Intel: ${recon} recon elements active. Unknown contacts shown by default when Fog is enabled.`;
+  }
+}
+
+window.addEventListener("keydown",(e)=>{
+  if(e.key.toLowerCase()==="a"){ $("orderKind").value="attack"; queueOrderForSelection(); }
+  if(e.key.toLowerCase()==="m"){ $("orderKind").value="move"; queueOrderForSelection(); }
+  if(e.key.toLowerCase()==="g"){ $("orderKind").value="defend"; queueOrderForSelection(); }
+});
+
+function installBatchSelect(){
+  let box=null, start=null;
+  mapArea.addEventListener("pointerdown",(ev)=>{
+    if(state.appMode!=="plan"||state.tool!=="selectPlan"||ev.target.closest('.unit')) return;
+    start=stagePointFromClient(ev);
+    box=document.createElement('div');
+    box.style.cssText='position:absolute;border:1px dashed #7aa7ff;background:rgba(122,167,255,.12);z-index:9;pointer-events:none';
+    stageEl.appendChild(box);
+  });
+  mapArea.addEventListener("pointermove",(ev)=>{
+    if(!box||!start) return;
+    const p=stagePointFromClient(ev);
+    const x=Math.min(start.x,p.x), y=Math.min(start.y,p.y), w=Math.abs(p.x-start.x), h=Math.abs(p.y-start.y);
+    Object.assign(box.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});
+  });
+  mapArea.addEventListener("pointerup",()=>{
+    if(!box||!start) return;
+    const r=box.getBoundingClientRect();
+    state.selection.ids.clear();
+    for(const u of state.units){
+      const ux=u.x+u.w/2, uy=u.y+u.h/2;
+      const sr=stageEl.getBoundingClientRect();
+      const cx=sr.left+ux*state.stage.zoom, cy=sr.top+uy*state.stage.zoom;
+      if(cx>=r.left&&cx<=r.right&&cy>=r.top&&cy<=r.bottom) state.selection.ids.add(u.id);
+    }
+    box.remove(); box=null; start=null;
+    toast(`Selected ${state.selection.ids.size} units.`);
+  });
+}
+
 /* ================= Autosave ================= */
 function saveAutosave(){
   try{
@@ -2509,10 +2896,14 @@ function applyLayerToggles(){
   infraSvg.style.display = $("togInfra").checked ? "block" : "none";
   unitsLayer.style.display = $("togUnits").checked ? "block" : "none";
   overlaySvg.style.display = $("togOverlays").checked ? "block" : "none";
+  const orderSvg=$("orderSvg"); if(orderSvg) orderSvg.style.display = $("togOverlays").checked ? "block" : "none";
 }
 
 function init(){
   loadTemplates(true);
+  ensureAdvancedUi();
+  installBatchSelect();
+  const fxStyle=document.createElement("style"); fxStyle.textContent="@keyframes fxPop{0%{transform:scale(.6);opacity:1}100%{transform:translateY(-22px) scale(1.1);opacity:0}}"; document.head.appendChild(fxStyle);
   const restored=loadAutosave();
   if(!restored){
     applyStageSize(1600,900);
