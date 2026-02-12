@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pako Forever 3D</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="hud">
+      <h1>Pako Forever 3D</h1>
+      <div class="row">
+        <label for="mapSelect">Map</label>
+        <select id="mapSelect"></select>
+      </div>
+      <div class="row">
+        <label for="modeSelect">Mode</label>
+        <select id="modeSelect"></select>
+      </div>
+      <div class="stats">
+        <span id="score">Score: 0</span>
+        <span id="combo">Combo: 0x</span>
+        <span id="speed">Speed: 0</span>
+      </div>
+      <p>WASD/Arrow keys to drive, Space to handbrake, R to reset.</p>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
